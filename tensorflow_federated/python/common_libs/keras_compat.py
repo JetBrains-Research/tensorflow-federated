@@ -214,3 +214,19 @@ def int_shape(x):
     return shape
   except ValueError:
     return None
+
+
+def restructure_collection(collection, target_collection):
+  """Restructures the collection to the same type as the target collection
+
+  Args:
+      collection: Collection that should be restructured
+      target_collection: Target collection with the target collection type
+
+  Returns:
+      The restructured collection if the target collection is of a different
+      type than the original collection, else returns the original collection
+
+  """
+  return keras.tree.pack_sequence_as([0] * len(collection), collection) \
+    if isinstance(target_collection, list) else collection

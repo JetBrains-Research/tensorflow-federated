@@ -19,7 +19,7 @@ import functools
 import tensorflow as tf
 
 from tensorflow_federated.proto.v0 import computation_pb2
-from tensorflow_federated.python.common_libs import py_typecheck
+from tensorflow_federated.python.common_libs import py_typecheck, keras_compat
 from tensorflow_federated.python.common_libs import structure
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
 from tensorflow_federated.python.core.impl.computation import computation_serialization

@@ -462,14 +462,16 @@ def build_linear_regression_keras_subclass_model(feature_dims=2):
 def build_embedding_keras_model(vocab_size=10):
   """Builds a test model with an embedding initialized to one-hot vectors."""
   keras_model = tf_keras.models.Sequential()
-  keras_model.add(tf_keras.layers.Embedding(input_dim=vocab_size, output_dim=5))
+  keras_model.add(tf_keras.layers.Embedding(input_dim=vocab_size, output_dim=5,
+                                            embeddings_initializer=keras.initializers.RandomUniform(seed=42)))
   keras_model.add(tf_keras.layers.Softmax())
   return keras_model
 
 def build_embedding_keras3_model(vocab_size=10):
   """Builds a test model with an embedding initialized to one-hot vectors."""
   keras_model = keras.models.Sequential()
-  keras_model.add(keras.layers.Embedding(input_dim=vocab_size, output_dim=5))
+  keras_model.add(keras.layers.Embedding(input_dim=vocab_size, output_dim=5,
+                                         embeddings_initializer=keras.initializers.RandomUniform(seed=42)))
   keras_model.add(keras.layers.Softmax())
   return keras_model
 

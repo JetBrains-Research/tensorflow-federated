@@ -413,12 +413,12 @@ class _KerasModel(variable.VariableModel):
         batch_size = tf.shape(first_prediction)[0]
 
         if len(self._loss_fns) == 1:
-          batch_loss = self._loss_fns[0](y_true, y_pred)
+          batch_loss = self._loss_fns[0](keras_compat.restructure_collection(y_true, y_pred), y_pred)
         else:
           batch_loss = tf.zeros(())
           for i in range(len(self._loss_fns)):
             batch_loss += self._loss_weights[i] * self._loss_fns[i](
-                y_true[i], y_pred[i]
+                keras_compat.restructure_collection(y_true[i], y_pred[i]), y_pred[i]
             )
 
         return super().update_state(batch_loss, batch_size)
@@ -502,7 +502,7 @@ class _KerasModel(variable.VariableModel):
         # `tf_keras.Model` training step. This is expected to have no effect if
         # no per-layer losses are added to the model.
         batch_loss = tf.add_n(
-            [loss_fn(y_true=y_true, y_pred=predictions)]
+            [loss_fn(y_true=keras_compat.restructure_collection(y_true, predictions), y_pred=predictions)]
             + self._keras_model.losses
         )
 
@@ -517,7 +517,7 @@ class _KerasModel(variable.VariableModel):
           loss_fn = self._loss_fns[i]
           loss_wt = self._loss_weights[i]
           batch_loss += loss_wt * loss_fn(
-              y_true=y_true[i], y_pred=predictions[i]
+              y_true=keras_compat.restructure_collection(y_true[i], predictions[i]), y_pred=predictions[i]
           )
     else:
       batch_loss = None
