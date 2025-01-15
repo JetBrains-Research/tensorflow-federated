@@ -169,6 +169,6 @@ test --test_size_filters="small,medium,large" --test_timeout_filters="short,mode
 test --test_tag_filters="-nokokoro,-requires-gpu-nvidia,-requires-jellyfish,-nopresubmit"
 
 # Enable bazel cache via gcs
-build --remote_cache=https://storage.googleapis.com/jbr-fed-dev-jbr-fed-dev-bazel-cache-87y8dh
+build --remote_cache=https://storage.googleapis.com/jbr-fed-bazel-cache/tensorflow-federated/build-package
 build --experimental_guard_against_concurrent_changes --remote_local_fallback
 build --noremote_upload_local_results
