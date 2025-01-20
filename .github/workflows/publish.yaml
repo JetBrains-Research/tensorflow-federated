@@ -19,7 +19,7 @@ on:  # yamllint disable-line rule:truthy
   # postsubmit
   push:
     branches:
-    - main
+    - arm-build
     paths:
     - 'tensorflow_federated/version.py'
 
@@ -38,9 +38,9 @@ jobs:
     # * Repository is not a fork.
     # * Branch is `main` (for workflow_dispatch trigger).
     if: |
-      github.repository == 'google-parfait/tensorflow-federated'
-      && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+      github.repository == 'JetBrains-Research/tensorflow-federated'
+      && github.ref == 'refs/heads/arm-build'
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     permissions:
       contents: write  # Required to create a release.
@@ -94,8 +94,9 @@ jobs:
   build-package:
     name: Build Package
     needs: [publish-release]
-    runs-on: ubuntu-20.04
-    timeout-minutes: 60
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    environment: release
     steps:
 
     - name: Checkout repository
@@ -129,11 +130,13 @@ jobs:
 
     - name: Build Python package
       run: |
+        ldd --version
         pip install --upgrade "numpy~=1.25"
         bazelisk run //tools/python_package:build_python_package \
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
-            --remote_cache="https://storage.googleapis.com/tensorflow-federated-bazel-cache/${{ github.job }}" \
+            --remote_cache="https://storage.googleapis.com/${{ vars.BAZEL_CACHE_BUCKET }}/${{ github.job }}" \
+            --config=linux_x86_64 \
             -- \
             --output_dir="${{ github.workspace }}/dist/"
 
@@ -146,7 +149,7 @@ jobs:
   test-package:
     name: Test Package
     needs: [build-package]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     steps:
 
@@ -187,10 +190,11 @@ jobs:
   publish-package:
     name: Publish Package
     needs: [build-package, test-package]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 5
     permissions:
       id-token: write  # Required for trusted publishing.
+    environment: release
     steps:
 
     - name: Download Python package
@@ -201,3 +205,8 @@ jobs:
 
     - name: Publish Python package
       uses: pypa/gh-action-pypi-publish@v1.8.14
+      with:
+        password: ${{ secrets.PYTHON_REPOSITORY_TOKEN }}
+        repository-url: ${{ vars.PYTHON_REPOSITORY_URL }}
+        verbose: 'true'
+        user: ${{ secrets.PYTHON_REPOSITORY_USER }}

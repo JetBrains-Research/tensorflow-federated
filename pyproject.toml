@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools", "toml"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -39,9 +39,8 @@ dependencies = [
   'dp-accounting==0.4.3',
   'google-vizier==0.1.11',
   'grpcio~=1.46',
-  'jaxlib==0.4.14',
-  'jax==0.4.14',
-  'ml_dtypes>=0.2.0,==0.2.*',
+  'jaxlib==0.4.18',
+  'jax==0.4.18',
   'numpy~=1.25',
   'portpicker~=1.6',
   'scipy~=1.9.3',
@@ -62,9 +61,12 @@ dynamic = ["version"]
 "Source" = "https://github.com/google-parfait/tensorflow-federated"
 "Documentation" = "https://www.tensorflow.org/federated"
 
-[tool.distutils.bdist_wheel]
-# Should match the expected GLIBC version defined in `build_python_package.sh`.
-plat-name = "manylinux_2_31_x86_64"
+#[tool.distutils.bdist_wheel]
+## Should match the expected GLIBC version defined in `build_python_package.sh`.
+#plat-name = "manylinux_2_31_x86_64"
+
+[tool.setuptools.bdist_wheel]
+plat-name = {file = "./build.py"} 
 
 [tool.setuptools.dynamic]
 version = {attr = "tensorflow_federated.version.__version__"}
