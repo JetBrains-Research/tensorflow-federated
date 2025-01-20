@@ -41,9 +41,8 @@ build:linux_x86_64 --copt=-march=haswell
 build:linux_x86_64 --host_copt=-march=haswell
 
 # Configuration for Linux on ARM64 (aarch64)
-# Add any specific flags for ARM64 if needed
-build:linux_aarch64 --copt=-march=armv8.5-a
-build:linux_aarch64 --host_copt=-march=armv8.5-a
+build:linux_aarch64 --copt=-march=armv8-a
+build:linux_aarch64 --host_copt=-march=armv8-a
 
 # Configure for Linux on ARM^$ (Apple Silicon)
 build:macos --macos_minimum_os=12.0
@@ -124,8 +123,8 @@ build:linux --define=INCLUDEDIR=$(PREFIX)/include
 build:linux --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 
 # By default, build TF in C++ 17 mode.
-build --cxxopt=-std=c++17
-build --host_cxxopt=-std=c++17
+build:linux --cxxopt=-std=c++17
+build:linux --host_cxxopt=-std=c++17
 
 # Do not risk cache corruption. See:
 # https://github.com/bazelbuild/bazel/issues/3360

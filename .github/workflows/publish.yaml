@@ -19,7 +19,7 @@ on:  # yamllint disable-line rule:truthy
   # postsubmit
   push:
     branches:
-    - arm-build
+    - main
     paths:
     - 'tensorflow_federated/version.py'
 
@@ -37,9 +37,9 @@ jobs:
     # Only if:
     # * Repository is not a fork.
     # * Branch is `main` (for workflow_dispatch trigger).
-    if: |
-      github.repository == 'JetBrains-Research/tensorflow-federated'
-      && github.ref == 'refs/heads/arm-build'
+#    if: |
+#      github.repository == 'google-parfait/tensorflow-federated'
+#      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:
@@ -82,7 +82,7 @@ jobs:
         } >> "$GITHUB_ENV"
 
     - name: Publish release
-      if: ${{ env.latest_version!= env.version }}
+      if: ${{ env.latest_version != env.version }}
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -119,7 +119,7 @@ jobs:
         create_credentials_file: true
 
     - name: Set up bazel repository cache
-      uses: actions/cache@v4.0.2
+      uses: actions/cache@v4.2.0
       with:
         path: "~/.cache/bazel/"
         key: ${{ runner.os }}-${{ matrix.arch }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE') }}
@@ -194,7 +194,6 @@ jobs:
 
     - name: Test Python package
       run: |
-        ls "${{ github.workspace }}/dist/"*".whl"
         package="$(ls "${{ github.workspace }}/dist/"*".whl" | head -n1)"
         actual_size="$(du -b "${package}" | cut -f1)"
         maximum_size=80000000  # 80 MiB

@@ -16,8 +16,6 @@
 # Tool to build the TensorFlow Federated Python package.
 set -e
 
-echo "Current working directory: - $(pwd)"
-
 usage() {
   local script_name=$(basename "${0}")
   echo "usage: ${script_name} --output_dir=<path>"
@@ -27,8 +25,6 @@ usage() {
 
 main() {
   local output_dir="${BUILD_WORKING_DIRECTORY}/dist"
-
-  pwd
 
   while [[ "$#" -gt 0 ]]; do
     option="$1"
@@ -52,39 +48,28 @@ main() {
   fi
 
   # Check the GLIBC version.
-#  local expected_glibc="2.31"
-#  if ! ldd --version | grep --quiet "${expected_glibc}"; then
-#    echo "error: expected GLIBC version to be '${expected_glibc}', found:" 1>&2
-#    ldd --version 1>&2
-#    exit 1
-#  fi
+  glibc_version=$(ldd --version 2>&1 | grep "GLIBC" | awk '{print $NF}')
 
-#  # Check the GLIBC version.
-#  glibc_version=$(ldd --version 2>&1 | grep "GLIBC" | awk '{print $NF}')
-#
-#  # Error handling if GLIBC version couldn't be determined.
-#  if [[ -z "$glibc_version" ]]; then
-#    echo "error: Could not determine GLIBC version." 1>&2
-#    exit 1
-#  fi
-#
-#  echo "Detected GLIBC version: $glibc_version"
-#
-#  # Extract major and minor version numbers for manylinux tag.
-#  IFS='.' read -r glibc_major glibc_minor <<< "$glibc_version"
-#  manylinux_version="${glibc_major}_${glibc_minor}"
-#
-#  # Detect architecture.
-#  arch=$(uname -m)
-#  case "$arch" in
-#    aarch64|x86_64) ;; # Supported architectures
-#    *) echo "error: Unsupported architecture: $arch" >&2; exit 1 ;;
-#  esac
+  # Error handling if GLIBC version couldn't be determined.
+  if [[ -z "$glibc_version" ]]; then
+    echo "error: Could not determine GLIBC version." 1>&2
+    exit 1
+  fi
 
-# TODO: update code above to process macos plat_name as well
-# In .bazelrc it is build with --macos_minimum_os=12.0
-# wonder if there is a better way
-  plat_name="macosx_12_0_arm64"
+  echo "Detected GLIBC version: $glibc_version"
+
+  # Extract major and minor version numbers for manylinux tag.
+  IFS='.' read -r glibc_major glibc_minor <<< "$glibc_version"
+  manylinux_version="${glibc_major}_${glibc_minor}"
+
+  # Detect architecture.
+  arch=$(uname -m)
+  case "$arch" in
+    aarch64|x86_64) ;; # Supported architectures
+    *) echo "error: Unsupported architecture: $arch" >&2; exit 1 ;;
+  esac
+
+  plat_name="manylinux_${manylinux_version}_${arch}"
 
 
   # Create a temp directory.
