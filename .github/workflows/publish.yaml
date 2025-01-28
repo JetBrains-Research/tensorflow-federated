@@ -140,7 +140,6 @@ jobs:
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
             --remote_cache="https://storage.googleapis.com/${{ vars.BAZEL_CACHE_BUCKET }}/${{ github.job }}" \
-            --cpu="armv8.5-a" \
             --config="linux_aarch64" \
             -- \
             --output_dir="${{ github.workspace }}/dist/"

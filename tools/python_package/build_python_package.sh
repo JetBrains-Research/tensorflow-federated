@@ -49,11 +49,59 @@ main() {
   fi
 
   # Check the GLIBC version.
-  local expected_glibc="2.31"
-  if ! ldd --version | grep --quiet "${expected_glibc}"; then
-    echo "error: expected GLIBC version to be '${expected_glibc}', found:" 1>&2
-    ldd --version 1>&2
+#  local expected_glibc="2.31"
+#  if ! ldd --version | grep --quiet "${expected_glibc}"; then
+#    echo "error: expected GLIBC version to be '${expected_glibc}', found:" 1>&2
+#    ldd --version 1>&2
+#    exit 1
+#  fi
+
+  # Check the GLIBC version.
+  glibc_version=$(ldd --version 2>&1 | grep "GLIBC" | awk '{print $NF}')
+
+  # Error handling if GLIBC version couldn't be determined.
+  if [[ -z "$glibc_version" ]]; then
+    echo "error: Could not determine GLIBC version." 1>&2
     exit 1
+  fi
+
+  echo "Detected GLIBC version: $glibc_version"
+
+  # Extract major and minor version numbers for manylinux tag.
+  IFS='.' read -r glibc_major glibc_minor <<< "$glibc_version"
+  manylinux_version="${glibc_major}_${glibc_minor}"
+
+  # Detect architecture.
+  case "$(uname -m)" in
+    aarch64)
+      arch="aarch64"
+      ;;
+    x86_64)
+      arch="x86_64"
+      ;;
+    *)
+      echo "error: Unsupported architecture: $(uname -m)" 1>&2
+      exit 1
+      ;;
+  esac
+
+  # Patch the project.toml file.
+  toml_file="project.toml"
+  plat_name_key="tool.distutils.bdist_wheel.plat-name"
+  # Construct the new plat-name value.
+  new_plat_name="manylinux_${manylinux_version}_${arch}"
+
+  # Check if the key exists before attempting to change it.
+  if jq -e ".$plat_name_key" "$toml_file" > /dev/null; then
+      jq ".$plat_name_key = \"$new_plat_name\"" "$toml_file" > "$toml_file.new"
+      mv "$toml_file.new" "$toml_file"
+      echo "Updated $plat_name_key in $toml_file to $new_plat_name"
+  else
+      echo "Warning: Key '$plat_name_key' not found in $toml_file. Creating it."
+      # Handle the case where the nested keys don't exist.
+      jq -c ".tool.distutils.bdist_wheel = { \"plat-name\": \"$new_plat_name\" }" "$toml_file" > "$toml_file.new"
+      mv "$toml_file.new" "$toml_file"
+      echo "Created $plat_name_key in $toml_file with value $new_plat_name"
   fi
 
   # Create a temp directory.
