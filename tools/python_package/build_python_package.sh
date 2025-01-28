@@ -16,6 +16,8 @@
 # Tool to build the TensorFlow Federated Python package.
 set -e
 
+echo "Current working directory: - $(pwd)"
+
 usage() {
   local script_name=$(basename "${0}")
   echo "usage: ${script_name} --output_dir=<path>"
@@ -24,7 +26,6 @@ usage() {
 }
 
 main() {
-  # Parse the arguments.
   local output_dir="${BUILD_WORKING_DIRECTORY}/dist"
 
   while [[ "$#" -gt 0 ]]; do
@@ -49,12 +50,43 @@ main() {
   fi
 
   # Check the GLIBC version.
-  local expected_glibc="2.31"
-  if ! ldd --version | grep --quiet "${expected_glibc}"; then
-    echo "error: expected GLIBC version to be '${expected_glibc}', found:" 1>&2
-    ldd --version 1>&2
+#  local expected_glibc="2.31"
+#  if ! ldd --version | grep --quiet "${expected_glibc}"; then
+#    echo "error: expected GLIBC version to be '${expected_glibc}', found:" 1>&2
+#    ldd --version 1>&2
+#    exit 1
+#  fi
+
+  # Check the GLIBC version.
+  glibc_version=$(ldd --version 2>&1 | grep "GLIBC" | awk '{print $NF}')
+
+  # Error handling if GLIBC version couldn't be determined.
+  if [[ -z "$glibc_version" ]]; then
+    echo "error: Could not determine GLIBC version." 1>&2
     exit 1
   fi
+
+  echo "Detected GLIBC version: $glibc_version"
+
+  # Extract major and minor version numbers for manylinux tag.
+  IFS='.' read -r glibc_major glibc_minor <<< "$glibc_version"
+  manylinux_version="${glibc_major}_${glibc_minor}"
+
+  # Detect architecture.
+  arch=$(uname -m)
+  case "$arch" in
+    aarch64|x86_64) ;; # Supported architectures
+    *) echo "error: Unsupported architecture: $arch" >&2; exit 1 ;;
+  esac
+
+  toml_file="../../pyproject.toml"
+  plat_name_key="tool.distutils.bdist_wheel.plat-name"
+  new_plat_name="manylinux_${manylinux_version}_${arch}"
+
+  pip install toml-cli
+  toml set --toml-path "$toml_file" "$plat_name_key" "$new_plat_name"
+  echo "Updated $plat_name_key in $toml_file to $new_plat_name"
+
 
   # Create a temp directory.
   local temp_dir="$(mktemp --directory)"
