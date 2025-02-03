@@ -28,6 +28,8 @@ usage() {
 main() {
   local output_dir="${BUILD_WORKING_DIRECTORY}/dist"
 
+  pwd
+
   while [[ "$#" -gt 0 ]]; do
     option="$1"
     case "${option}" in
@@ -79,13 +81,7 @@ main() {
     *) echo "error: Unsupported architecture: $arch" >&2; exit 1 ;;
   esac
 
-  toml_file="../../pyproject.toml"
-  plat_name_key="tool.distutils.bdist_wheel.plat-name"
-  new_plat_name="manylinux_${manylinux_version}_${arch}"
-
-  pip install toml-cli
-  toml set --toml-path "$toml_file" "$plat_name_key" "$new_plat_name"
-  echo "Updated $plat_name_key in $toml_file to $new_plat_name"
+  plat_name="manylinux_${manylinux_version}_${arch}"
 
 
   # Create a temp directory.
@@ -100,7 +96,10 @@ main() {
   pip --version
 
   # Build the Python package.
-  pip install --upgrade "build"
+  pip install --upgrade "build" "toml-cli"
+
+  # Update wheel platform
+  toml set --toml-path "../../pyproject.toml" "tool.distutils.bdist_wheel.plat-name" "$plat_name"
   pip freeze
   python -m build --outdir "${output_dir}"
 }

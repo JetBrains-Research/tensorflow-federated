@@ -40,7 +40,7 @@ jobs:
     if: |
       github.repository == 'JetBrains-Research/tensorflow-federated'
       && github.ref == 'refs/heads/arm-build'
-    runs-on: ubuntu-22.04-arm
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:
       contents: write  # Required to create a release.
@@ -82,7 +82,7 @@ jobs:
         } >> "$GITHUB_ENV"
 
     - name: Publish release
-      if: ${{ env.latest_version != env.version }}
+      if: ${{ env.latest_version!= env.version }}
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -94,7 +94,14 @@ jobs:
   build-package:
     name: Build Package
     needs: [publish-release]
-    runs-on: ubuntu-22.04-arm
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: x86_64
+          - os: ubuntu-22.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     environment: release
     steps:
@@ -133,9 +140,6 @@ jobs:
       with:
         version: "14.0"
 
-    - name: Install yq
-      uses: dcarbone/install-yq-action@v1
-
     - name: Build Python package
       run: |
         pip install --upgrade "numpy~=1.25"
@@ -143,7 +147,7 @@ jobs:
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
             --remote_cache="https://storage.googleapis.com/${{ vars.BAZEL_CACHE_BUCKET }}/${{ github.job }}" \
-            --config="linux_aarch64" \
+            --config="linux_${{ matrix.arch }}" \
             -- \
             --output_dir="${{ github.workspace }}/dist/"
 
@@ -156,7 +160,10 @@ jobs:
   test-package:
     name: Test Package
     needs: [build-package]
-    runs-on: ubuntu-22.04-arm
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
 
@@ -197,7 +204,7 @@ jobs:
   publish-package:
     name: Publish Package
     needs: [build-package, test-package]
-    runs-on: ubuntu-22.04-arm
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:
       id-token: write  # Required for trusted publishing.
