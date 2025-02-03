@@ -26,8 +26,6 @@ usage() {
 main() {
   local output_dir="${BUILD_WORKING_DIRECTORY}/dist"
 
-  pwd
-
   while [[ "$#" -gt 0 ]]; do
     option="$1"
     case "${option}" in
