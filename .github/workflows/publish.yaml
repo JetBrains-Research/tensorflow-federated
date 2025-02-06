@@ -219,7 +219,8 @@ jobs:
     - name: Download Python package
       uses: actions/download-artifact@v4.1.7
       with:
-        name: python-package-distributions-*
+        pattern: python-package-distributions-*
+        merge-multiple: true
         path: dist/
 
     - name: Publish Python package
