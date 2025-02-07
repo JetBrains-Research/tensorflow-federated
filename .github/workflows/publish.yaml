@@ -194,6 +194,7 @@ jobs:
 
     - name: Test Python package
       run: |
+        ls "${{ github.workspace }}/dist/"*".whl"
         package="$(ls "${{ github.workspace }}/dist/"*".whl" | head -n1)"
         actual_size="$(du -b "${package}" | cut -f1)"
         maximum_size=80000000  # 80 MiB
