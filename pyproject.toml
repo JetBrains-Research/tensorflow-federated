@@ -61,7 +61,7 @@ dynamic = ["version"]
 "Source" = "https://github.com/google-parfait/tensorflow-federated"
 "Documentation" = "https://www.tensorflow.org/federated"
 
-[tool.distutils.bdist_wheel]
+[tool.distutils.bdist_wheel.dynamic]
 # Should match the expected GLIBC version defined in `build_python_package.sh`.
 plat-name = {attr = "federated_language.version.__plat-name__"}
 
