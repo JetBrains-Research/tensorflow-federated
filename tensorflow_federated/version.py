@@ -63,7 +63,7 @@ def get_platform_name():
     return f"unknown_{arch}"
 
 __plat_name__ = get_platform_name()
-__version__ = '0.86.3b'
+__version__ = '0.86.4a1'
 
 if __name__ == "__main__":
     print(f"__plat_name__ = {__plat_name__}")
