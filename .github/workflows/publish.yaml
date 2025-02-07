@@ -122,8 +122,8 @@ jobs:
       uses: actions/cache@v4.0.2
       with:
         path: "~/.cache/bazel/"
-        key: ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE') }}
-        restore-keys: ${{ runner.os }}-bazel-
+        key: ${{ runner.os }}-${{ matrix.arch }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE') }}
+        restore-keys: ${{ runner.os }}-${{ matrix.arch }}-bazel
 
     - name: Set up Python
       uses: actions/setup-python@v5.1.0
@@ -154,7 +154,7 @@ jobs:
     - name: Upload Python package
       uses: actions/upload-artifact@v4.3.3
       with:
-        name: python-package-distributions
+        name: python-package-distributions-${{ matrix.arch }}
         path: dist/*.whl
 
   test-package:
@@ -162,7 +162,11 @@ jobs:
     needs: [build-package]
     strategy:
       matrix:
-        os: [ubuntu-22.04, ubuntu-22.04-arm]
+        include:
+          - os: ubuntu-22.04
+            arch: x86_64
+          - os: ubuntu-22.04-arm
+            arch: aarch64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
@@ -175,7 +179,7 @@ jobs:
     - name: Download Python package
       uses: actions/download-artifact@v4.1.7
       with:
-        name: python-package-distributions
+        name: python-package-distributions-${{ matrix.arch }}
         path: dist/
 
     - name: Set up Python
@@ -190,6 +194,7 @@ jobs:
 
     - name: Test Python package
       run: |
+        ls "${{ github.workspace }}/dist/"*".whl"
         package="$(ls "${{ github.workspace }}/dist/"*".whl" | head -n1)"
         actual_size="$(du -b "${package}" | cut -f1)"
         maximum_size=80000000  # 80 MiB
@@ -214,7 +219,8 @@ jobs:
     - name: Download Python package
       uses: actions/download-artifact@v4.1.7
       with:
-        name: python-package-distributions
+        pattern: python-package-distributions-*
+        merge-multiple: true
         path: dist/
 
     - name: Publish Python package

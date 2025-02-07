@@ -99,7 +99,7 @@ main() {
   pip install --upgrade "build" "toml-cli"
 
   # Update wheel platform
-  toml set --toml-path "../../pyproject.toml" "tool.distutils.bdist_wheel.plat-name" "$plat_name"
+  toml set --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" "$plat_name"
   pip freeze
   python -m build --outdir "${output_dir}"
 }

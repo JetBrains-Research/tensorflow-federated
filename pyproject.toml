@@ -63,10 +63,8 @@ dynamic = ["version"]
 
 [tool.distutils.bdist_wheel]
 # Should match the expected GLIBC version defined in `build_python_package.sh`.
-plat-name = "manylinux_2_35_aarch64" # "manylinux_2_31_x86_64"
-
-#[tool.setuptools.bdist_wheel]
-#plat_name = {file = "./build.py", function = "get_plat_name"}
+#plat-name = "manylinux_2_35_aarch64" # "manylinux_2_31_x86_64"
+plat-name = {attr = "federated_language.version.__plat-name__"}
 
 [tool.setuptools.dynamic]
 version = {attr = "tensorflow_federated.version.__version__"}
