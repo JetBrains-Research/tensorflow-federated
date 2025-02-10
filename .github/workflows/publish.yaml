@@ -82,7 +82,7 @@ jobs:
         } >> "$GITHUB_ENV"
 
     - name: Publish release
-      if: ${{ env.latest_version!= env.version }}
+      if: ${{ env.latest_version != env.version }}
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
