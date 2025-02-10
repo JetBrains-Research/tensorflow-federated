@@ -31,6 +31,7 @@ Adaptive Federated Optimization
 from collections.abc import Callable
 from typing import Optional, Union
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 
@@ -39,7 +40,6 @@ from tensorflow_federated.python.aggregators import factory_utils
 from tensorflow_federated.python.aggregators import mean
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.types import computation_types
 from tensorflow_federated.python.learning import client_weight_lib
 from tensorflow_federated.python.learning import loop_builder
 from tensorflow_federated.python.learning.metrics import aggregator as metric_aggregator
@@ -62,14 +62,8 @@ def build_weighted_fed_avg(
     model_fn: Union[
         Callable[[], variable.VariableModel], functional.FunctionalModel
     ],
-    client_optimizer_fn: Union[
-        optimizer_base.Optimizer, Callable[[], tf.keras.optimizers.Optimizer]
-    ],
-    server_optimizer_fn: Union[
-        optimizer_base.Optimizer,
-        Callable[[], tf.keras.optimizers.Optimizer],
-        None,
-    ] = None,
+    client_optimizer_fn: optimizer_base.Optimizer,
+    server_optimizer_fn: Optional[optimizer_base.Optimizer] = None,
     *,
     client_weighting: Optional[
         client_weight_lib.ClientWeighting
@@ -85,22 +79,26 @@ def build_weighted_fed_avg(
   federated averaging on client models. The iterative process has the following
   methods inherited from `tff.learning.templates.LearningProcess`:
 
-  *   `initialize`: A `tff.Computation` with the functional type signature
+  *   `initialize`: A `federated_language.Computation` with the functional type
+  signature
       `( -> S@SERVER)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` representing the initial
       state of the server.
-  *   `next`: A `tff.Computation` with the functional type signature
+  *   `next`: A `federated_language.Computation` with the functional type
+  signature
       `(<S@SERVER, {B*}@CLIENTS> -> <L@SERVER>)` where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `{B*}@CLIENTS` represents the client datasets.
       The output `L` contains the updated server state, as well as aggregated
       metrics at the server, including client training metrics and any other
       metrics from distribution and aggregation processes.
-  *   `get_model_weights`: A `tff.Computation` with type signature `(S -> M)`,
+  *   `get_model_weights`: A `federated_language.Computation` with type
+  signature `(S -> M)`,
       where `S` is a `tff.learning.templates.LearningAlgorithmState` whose type
       matches the output of `initialize` and `next`, and `M` represents the type
       of the model weights used during training.
-  *   `set_model_weights`: A `tff.Computation` with type signature
+  *   `set_model_weights`: A `federated_language.Computation` with type
+  signature
       `(<S, M> -> S)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `M` represents the type of the model weights
@@ -131,15 +129,9 @@ def build_weighted_fed_avg(
       The model must be constructed entirely from scratch on each invocation,
       returning the same pre-constructed model each call will result in an
       error.
-    client_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a no-arg
-      callable that returns a `tf.keras.Optimizer`. If `model_fn` is a
-      `tff.learning.models.FunctionalModel`, _must_ be a
-      `tff.learning.optimizers.Optimizer`.
-    server_optimizer_fn: A `tff.learning.optimizers.Optimizer`, a no-arg
-      callable that returns a `tf.keras.Optimizer`, or None. By default, this
-      uses `tff.leanring.optimizers.build_sgdm` with a learning rate of 1.0. If
-      `model_fn` is a `tff.learning.models.FunctionalModel`, _must_ be a
-      `tff.learning.optimizers.Optimizer`.
+    client_optimizer_fn: A `tff.learning.optimizers.Optimizer`.
+    server_optimizer_fn: A `tff.learning.optimizers.Optimizer`. By default, this
+      uses `tff.leanring.optimizers.build_sgdm` with a learning rate of 1.0.
     client_weighting: A member of `tff.learning.ClientWeighting` that specifies
       a built-in weighting method. By default, weighting by number of examples
       is used.
@@ -152,11 +144,12 @@ def build_weighted_fed_avg(
       `tff.aggregators.MeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -230,7 +223,7 @@ def build_weighted_fed_avg(
   else:
     model_update_type = model_weights_type.trainable
   aggregator = model_aggregator.create(
-      model_update_type, computation_types.TensorType(np.float32)
+      model_update_type, federated_language.TensorType(np.float32)
   )
 
   process_signature = aggregator.next.type_signature
@@ -282,14 +275,8 @@ def build_unweighted_fed_avg(
     model_fn: Union[
         Callable[[], variable.VariableModel], functional.FunctionalModel
     ],
-    client_optimizer_fn: Union[
-        optimizer_base.Optimizer, Callable[[], tf.keras.optimizers.Optimizer]
-    ],
-    server_optimizer_fn: Union[
-        optimizer_base.Optimizer,
-        Callable[[], tf.keras.optimizers.Optimizer],
-        None,
-    ] = None,
+    client_optimizer_fn: optimizer_base.Optimizer,
+    server_optimizer_fn: Optional[optimizer_base.Optimizer] = None,
     model_distributor: Optional[distributors.DistributionProcess] = None,
     model_aggregator: Optional[factory.UnweightedAggregationFactory] = None,
     metrics_aggregator: types.MetricsAggregatorType = metric_aggregator.sum_then_finalize,
@@ -301,22 +288,26 @@ def build_unweighted_fed_avg(
   federated averaging on client models. The iterative process has the following
   methods inherited from `tff.learning.templates.LearningProcess`:
 
-  *   `initialize`: A `tff.Computation` with the functional type signature
+  *   `initialize`: A `federated_language.Computation` with the functional type
+  signature
       `( -> S@SERVER)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` representing the initial
       state of the server.
-  *   `next`: A `tff.Computation` with the functional type signature
+  *   `next`: A `federated_language.Computation` with the functional type
+  signature
       `(<S@SERVER, {B*}@CLIENTS> -> <L@SERVER>)` where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `{B*}@CLIENTS` represents the client datasets.
       The output `L` contains the updated server state, as well as aggregated
       metrics at the server, including client training metrics and any other
       metrics from distribution and aggregation processes.
-  *   `get_model_weights`: A `tff.Computation` with type signature `(S -> M)`,
+  *   `get_model_weights`: A `federated_language.Computation` with type
+  signature `(S -> M)`,
       where `S` is a `tff.learning.templates.LearningAlgorithmState` whose type
       matches the output of `initialize` and `next`, and `M` represents the type
       of the model weights used during training.
-  *   `set_model_weights`: A `tff.Computation` with type signature
+  *   `set_model_weights`: A `federated_language.Computation` with type
+  signature
       `(<S, M> -> S)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `M` represents the type of the model weights
@@ -345,15 +336,9 @@ def build_unweighted_fed_avg(
       The model must be constructed entirely from scratch on each invocation,
       returning the same pre-constructed model each call will result in an
       error.
-    client_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a no-arg
-      callable that returns a `tf.keras.Optimizer`. If `model_fn` is a
-      `tff.learning.models.FunctionalModel`, _must_ be a
-      `tff.learning.optimizers.Optimizer`.
-    server_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a no-arg
-      callable that returns a `tf.keras.Optimizer`. By default, this uses
-      `tff.learning.optimizers.build_sgdm` with a learning rate of 1.0. If
-      `model_fn` is a `tff.learning.models.FunctionalModel`, _must_ be a
-      `tff.learning.optimizers.Optimizer`.
+    client_optimizer_fn: A `tff.learning.optimizers.Optimizer`.
+    server_optimizer_fn: An optional `tff.learning.optimizers.Optimizer`. By
+      default, uses `tff.learning.optimizers.build_sgdm(learning_rate=1.0)`.
     model_distributor: An optional `DistributionProcess` that distributes the
       model weights on the server to the clients. If set to `None`, the
       distributor is constructed via `distributors.build_broadcast_process`.
@@ -362,11 +347,12 @@ def build_unweighted_fed_avg(
       `tff.aggregators.UnweightedMeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 

@@ -19,12 +19,12 @@ limitations under the License
 #include <future>  // NOLINT
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow_federated/cc/core/impl/executors/data_backend.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/status_macros.h"
@@ -44,8 +44,8 @@ class DataExecutor : public ExecutorBase<ValueFuture> {
       : child_(std::move(child)), data_backend_(std::move(data_backend)) {}
 
  protected:
-  std::string_view ExecutorName() final {
-    static constexpr std::string_view kExecutorName = "DataExecutor";
+  absl::string_view ExecutorName() final {
+    static constexpr absl::string_view kExecutorName = "DataExecutor";
     return kExecutorName;
   }
 
@@ -55,8 +55,8 @@ class DataExecutor : public ExecutorBase<ValueFuture> {
       // Note: `value_pb` is copied here in order to ensure that it remains
       // available for the lifetime of the resolving thread. However, it should
       // be relatively small and inexpensive (currently just a URI).
-      v0::Data data = value_pb.computation().data();
-      v0::Type data_type = value_pb.computation().type();
+      federated_language::Data data = value_pb.computation().data();
+      federated_language::Type data_type = value_pb.computation().type();
       return ThreadRun([this, data = std::move(data),
                         data_type = std::move(data_type),
                         this_keepalive =

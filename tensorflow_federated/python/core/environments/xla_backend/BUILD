@@ -24,57 +24,6 @@ py_library(
 )
 
 py_library(
-    name = "compiler",
-    srcs = ["compiler.py"],
-    deps = [
-        ":xla_serialization",
-        "//tensorflow_federated/python/common_libs:py_typecheck",
-        "//tensorflow_federated/python/common_libs:structure",
-        "//tensorflow_federated/python/core/impl/compiler:local_computation_factory_base",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-        "//tensorflow_federated/python/core/impl/types:type_analysis",
-    ],
-)
-
-py_test(
-    name = "compiler_test",
-    size = "small",
-    srcs = ["compiler_test.py"],
-    deps = [
-        ":compiler",
-        ":runtime",
-        "//tensorflow_federated/proto/v0:computation_py_pb2",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-    ],
-)
-
-py_library(
-    name = "runtime",
-    srcs = ["runtime.py"],
-    deps = [
-        ":xla_serialization",
-        "//tensorflow_federated/proto/v0:computation_py_pb2",
-        "//tensorflow_federated/python/common_libs:py_typecheck",
-        "//tensorflow_federated/python/common_libs:structure",
-        "//tensorflow_federated/python/core/impl/types:array_shape",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-        "//tensorflow_federated/python/core/impl/types:type_analysis",
-        "//tensorflow_federated/python/core/impl/types:typed_object",
-    ],
-)
-
-py_test(
-    name = "runtime_test",
-    srcs = ["runtime_test.py"],
-    deps = [
-        ":runtime",
-        ":xla_serialization",
-        "//tensorflow_federated/python/common_libs:structure",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-    ],
-)
-
-py_library(
     name = "xla_executor_bindings",
     srcs = ["xla_executor_bindings.py"],
     tags = [
@@ -96,12 +45,11 @@ py_library(
     name = "xla_serialization",
     srcs = ["xla_serialization.py"],
     deps = [
-        "//tensorflow_federated/proto/v0:computation_py_pb2",
         "//tensorflow_federated/python/common_libs:py_typecheck",
         "//tensorflow_federated/python/common_libs:structure",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-        "//tensorflow_federated/python/core/impl/types:type_serialization",
         "@com_google_protobuf//:protobuf_python",
+        "@federated_language//federated_language",
+        "@federated_language//federated_language/proto:computation_py_pb2",
     ],
 )
 
@@ -111,9 +59,8 @@ py_test(
     srcs = ["xla_serialization_test.py"],
     deps = [
         ":xla_serialization",
-        "//tensorflow_federated/proto/v0:computation_py_pb2",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-        "//tensorflow_federated/python/core/impl/types:type_serialization",
         "@com_google_protobuf//:protobuf_python",
+        "@federated_language//federated_language",
+        "@federated_language//federated_language/proto:computation_py_pb2",
     ],
 )

@@ -71,8 +71,9 @@ TFF's Federated Core is designed to describe the behavior of the system from the
 
 Consequently, while distributed frameworks for general purposes may offer
 operations such as *send* and *receive* as building blocks, FC provides building
-blocks such as `tff.federated_sum`, `tff.federated_reduce`, or
-`tff.federated_broadcast` that encapsulate simple distributed protocols.
+blocks such as `federated_language.federated_sum`, `tff.federated_reduce`, or
+`federated_language.federated_broadcast` that encapsulate simple distributed
+protocols.
 
 ## Language
 
@@ -80,25 +81,26 @@ blocks such as `tff.federated_sum`, `tff.federated_reduce`, or
 
 TFF uses an internal language to represent federated computations, the syntax of
 which is defined by the serializable representation in
-[computation.proto](https://github.com/google-parfait/tensorflow-federated/blob/main/tensorflow_federated/proto/v0/computation.proto).
+[computation.proto](https://github.com/google-parfait/federated-language/blob/main/tensorflow_federated/proto/computation.proto).
 Users of FC API generally won't need to interact with this language directly,
 though. Rather, we provide a Python API (the `tff` namespace) that wraps arounds
 it as a way to define computations.
 
 Specifically, TFF provides Python function decorators such as
-`tff.federated_computation` that trace the bodies of the decorated functions,
-and produce serialized representations of the federated computation logic in
-TFF's language. A function decorated with `tff.federated_computation` acts as a
-carrier of such serialized representation, and can embed it as a building block
-in the body of another computation, or execute it on demand when invoked.
+`federated_language.federated_computation` that trace the bodies of the
+decorated functions, and produce serialized representations of the federated
+computation logic in TFF's language. A function decorated with
+`federatedd_language.federated_computation` acts as a carrier of such serialized
+representation, and can embed it as a building block in the body of another
+computation, or execute it on demand when invoked.
 
 Here's just one example; more examples can be found in the
 [custom algorithms](tutorials/custom_federated_algorithms_1.ipynb) tutorials.
 
 ```python
-@tff.federated_computation(tff.FederatedType(np.float32, tff.CLIENTS))
+@federated_language.federated_computation(federated_language.FederatedType(np.float32, federated_language.CLIENTS))
 def get_average_temperature(sensor_readings):
-  return tff.federated_mean(sensor_readings)
+  return federated_language.federated_mean(sensor_readings)
 ```
 
 Readers familiar with non-eager TensorFlow will find this approach analogous to
@@ -107,8 +109,8 @@ section of Python code that defines a TensorFlow graph. Albeit the code is
 technically expressed in Python, its purpose is to construct a serializable
 representation of a `tf.Graph` underneath, and it is the graph, not the Python
 code, that is internally executed by the TensorFlow runtime. Likewise, one can
-think of `tff.federated_mean` as inserting a *federated op* into a federated
-computation represented by `get_average_temperature`.
+think of `federated_language.federated_mean` as inserting a *federated op* into
+a federated computation represented by `get_average_temperature`.
 
 A part of the reason for FC defining a language has to do with the fact that, as
 noted above, federated computations specify distributed collective behaviors,
@@ -127,13 +129,14 @@ notation, as it's a handy way or describing types of computations and operators.
 First, here are the categories of types that are conceptually similar to those
 found in existing mainstream languages:
 
-*   **Tensor types** (`tff.TensorType`). Just as in TensorFlow, these have
-    `dtype` and `shape`. The only difference is that objects of this type are
-    not limited to `tf.Tensor` instances in Python that represent outputs of
-    TensorFlow ops in a TensorFlow graph, but may also include units of data
-    that can be produced, e.g., as an output of a distributed aggregation
-    protocol. Thus, the TFF tensor type is simply an abstract version of a
-    concrete physical representation of such type in Python or TensorFlow.
+*   **Tensor types** (`federated_language.TensorType`). Just as in TensorFlow,
+    these have `dtype` and `shape`. The only difference is that objects of this
+    type are not limited to `tf.Tensor` instances in Python that represent
+    outputs of TensorFlow ops in a TensorFlow graph, but may also include units
+    of data that can be produced, e.g., as an output of a distributed
+    aggregation protocol. Thus, the TFF tensor type is simply an abstract
+    version of a concrete physical representation of such type in Python or
+    TensorFlow.
 
     TFF's `TensorTypes` can be stricter in their (static) treatment of shapes
     than TensorFlow. For example, TFF's typesystem treats a tensor with unknown
@@ -147,16 +150,16 @@ found in existing mainstream languages:
     example, `int32` and `int32[10]` are the types of integers and int vectors,
     respectively.
 
-*   **Sequence types** (`tff.SequenceType`). These are TFF's abstract equivalent
-    of TensorFlow's concrete concept of `tf.data.Dataset`s. Elements of
-    sequences can be consumed in a sequential manner, and can include complex
-    types.
+*   **Sequence types** (`federated_language.SequenceType`). These are TFF's
+    abstract equivalent of TensorFlow's concrete concept of `tf.data.Dataset`s.
+    Elements of sequences can be consumed in a sequential manner, and can
+    include complex types.
 
     The compact representation of sequence types is `T*`, where `T` is the type
     of elements. For example `int32*` represents an integer sequence.
 
-*   **Named tuple types** (`tff.StructType`). These are TFF's way of
-    constructing tuples and dictionary-like structures that have a predefined
+*   **Named tuple types** (`federated_language.StructType`). These are TFF's way
+    of constructing tuples and dictionary-like structures that have a predefined
     number of *elements* with specific types, named or unnamed. Importantly,
     TFF's named tuple concept encompasses the abstract equivalent of Python's
     argument tuples, i.e., collections of elements of which some, but not all
@@ -170,8 +173,8 @@ found in existing mainstream languages:
     as mixed with other types, e.g., `<X=float32,Y=float32>*` would be a compact
     notation for a sequence of points.
 
-*   **Function types** (`tff.FunctionType`). TFF is a functional programming
-    framework, with functions treated as
+*   **Function types** (`federated_language.FunctionType`). TFF is a functional
+    programming framework, with functions treated as
     [first-class values](https://en.wikipedia.org/wiki/First-class_citizen).
     Functions have at most one argument, and exactly one result.
 
@@ -188,10 +191,11 @@ As these concepts are somewhat unique to TFF, we encourage you to refer to the
 additional commentary and examples.
 
 *   **Placement type**. This type is not yet exposed in the public API other
-    than in the form of 2 literals `tff.SERVER` and `tff.CLIENTS` that you can
-    think of as constants of this type. It is used internally, however, and will
-    be introduced in the public API in future releases. The compact
-    representation of this type is `placement`.
+    than in the form of 2 literals `federated_language.SERVER` and
+    `federated_language.CLIENTS` that you can think of as constants of this
+    type. It is used internally, however, and will be introduced in the public
+    API in future releases. The compact representation of this type is
+    `placement`.
 
     A *placement* represents a collective of system participants that play a
     particular role. The initial release is targeting client-server
@@ -206,10 +210,11 @@ additional commentary and examples.
     The primary purpose of defining the notion of placements is as a basis for
     defining *federated types*.
 
-*   **Federated types** (`tff.FederatedType`). A value of a federated type is
-    one that is hosted by a group of system participants defined by a specific
-    placement (such as `tff.SERVER` or `tff.CLIENTS`). A federated type is
-    defined by the *placement* value (thus, it is a
+*   **Federated types** (`federated_language.FederatedType`). A value of a
+    federated type is one that is hosted by a group of system participants
+    defined by a specific placement (such as `federated_language.SERVER` or
+    `federated_language.CLIENTS`). A federated type is defined by the
+    *placement* value (thus, it is a
     [dependent type](https://en.wikipedia.org/wiki/Dependent_type)), the type of
     *member constituents* (what kind of content each of the participants is
     locally hosting), and the additional bit `all_equal` that specifies whether
@@ -259,15 +264,16 @@ public API:
     `tf.data.Dataset.reduce` operator to compute a sum of integers:
 
     ```python
-    @tff.tensorflow.computation(tff.SequenceType(np.int32))
+    @tff.tensorflow.computation(federated_language.SequenceType(np.int32))
     def add_up_integers(x):
       return x.reduce(np.int32(0), lambda x, y: x + y)
     ```
 
 *   **Intrinsics** or *federated operators* (`tff.federated_...`). This is a
-    library of functions such as `tff.federated_sum` or
-    `tff.federated_broadcast` that constitute the bulk of FC API, most of which
-    represent distributed communication operators for use with TFF.
+    library of functions such as `federated_language.federated_sum` or
+    `federated_language.federated_broadcast` that constitute the bulk of FC API,
+    most of which represent distributed communication operators for use with
+    TFF.
 
     We refer to these as *intrinsics* because, somewhat like
     [intrinsic functions](https://en.wikipedia.org/wiki/Intrinsic_function),
@@ -277,27 +283,28 @@ public API:
     Most of these operators have parameters and results of federated types, and
     most are templates that can be applied to various kinds of data.
 
-    For example, `tff.federated_broadcast` can be thought of as a template
-    operator of a functional type `T@SERVER -> T@CLIENTS`.
+    For example, `federated_language.federated_broadcast` can be thought of as a
+    template operator of a functional type `T@SERVER -> T@CLIENTS`.
 
-*   **Lambda expressions** (`tff.federated_computation`). A lambda expression in
-    TFF is the equivalent of a `lambda` or `def` in Python; it consists of the
-    parameter name, and a body (expression) that contains references to this
-    parameter.
+*   **Lambda expressions** (`federated_language.federated_computation`). A
+    lambda expression in TFF is the equivalent of a `lambda` or `def` in Python;
+    it consists of the parameter name, and a body (expression) that contains
+    references to this parameter.
 
     In Python code, these can be created by decorating Python functions with
-    `tff.federated_computation` and defining an argument.
+    `federated_language.federated_computation` and defining an argument.
 
     Here's an example of a lambda expression we've already mentioned earlier:
 
     ```python
-    @tff.federated_computation(tff.FederatedType(np.float32, tff.CLIENTS))
+    @federated_language.federated_computation(federated_language.FederatedType(np.float32, federated_language.CLIENTS))
     def get_average_temperature(sensor_readings):
-      return tff.federated_mean(sensor_readings)
+      return federated_language.federated_mean(sensor_readings)
     ```
 
-*   **Placement literals**. For now, only `tff.SERVER` and `tff.CLIENTS` to
-    allow for defining simple client-server computations.
+*   **Placement literals**. For now, only `federated_language.SERVER` and
+    `federated_language.CLIENTS` to allow for defining simple client-server
+    computations.
 
 *   **Function invocations** (`__call__`). Anything that has a functional type
     can be invoked using the standard Python `__call__` syntax. The invocation
@@ -310,11 +317,11 @@ public API:
         computation defined earlier on an argument `x`. The type of this
         expression is `int32`.
 
-    *   `tff.federated_mean(sensor_readings)` represents an invocation of the
-        federated averaging operator on `sensor_readings`. The type of this
-        expression is `float32@SERVER` (assuming context from the example
-        above).
+    *   `federated_language.federated_mean(sensor_readings)` represents an
+        invocation of the federated averaging operator on `sensor_readings`. The
+        type of this expression is `float32@SERVER` (assuming context from the
+        example above).
 
 *   Forming **tuples** and **selecting** their elements. Python expressions of
     the form `[x, y]`, `x[y]`, or `x.y` that appear in the bodies of functions
-    decorated with `tff.federated_computation`.
+    decorated with `federated_language.federated_computation`.

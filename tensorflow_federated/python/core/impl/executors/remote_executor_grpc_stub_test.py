@@ -15,12 +15,12 @@
 from unittest import mock
 
 from absl.testing import absltest
+import federated_language
 import grpc
 import portpicker
 
 from tensorflow_federated.proto.v0 import executor_pb2
 from tensorflow_federated.proto.v0 import executor_pb2_grpc
-from tensorflow_federated.python.core.impl.compiler import computation_factory
 from tensorflow_federated.python.core.impl.executors import executors_errors
 from tensorflow_federated.python.core.impl.executors import remote_executor_grpc_stub
 from tensorflow_federated.python.core.impl.executors import value_serialization
@@ -50,6 +50,11 @@ class _StubRpcError(grpc.RpcError, grpc.Call):
     raise NotImplementedError()
 
 
+@federated_language.federated_computation()
+def _empty_struct():
+  return ()
+
+
 class GrpcConnectivityTest(absltest.TestCase):
 
   def fake_channel_subscribe(self, callback, try_to_connect=True):
@@ -67,8 +72,8 @@ class GrpcConnectivityTest(absltest.TestCase):
 class RemoteExecutorGrpcStubTest(absltest.TestCase):
 
   def test_compute_returns_result(self, mock_executor_grpc_stub):
-    comp = computation_factory.create_lambda_empty_struct()
-    value = executor_pb2.Value(computation=comp)
+    proto = _empty_struct.to_proto()
+    value = executor_pb2.Value(computation=proto)
     response = executor_pb2.ComputeResponse(value=value)
     instance = mock_executor_grpc_stub.return_value
     instance.Compute = mock.Mock(side_effect=[response])
@@ -83,7 +88,7 @@ class RemoteExecutorGrpcStubTest(absltest.TestCase):
     instance.Compute.assert_called_once()
 
     value, _ = value_serialization.deserialize_value(result.value)
-    self.assertEqual(value, comp)
+    self.assertEqual(value, proto)
 
   def test_compute_raises_retryable_error_on_grpc_error_unavailable(
       self, mock_executor_grpc_stub
@@ -94,7 +99,7 @@ class RemoteExecutorGrpcStubTest(absltest.TestCase):
     )
     stub = create_stub()
 
-    with self.assertRaises(executors_errors.RetryableError):
+    with self.assertRaises(federated_language.framework.RetryableError):
       stub.compute(
           executor_pb2.ComputeRequest(value_ref=executor_pb2.ValueRef())
       )
@@ -140,7 +145,7 @@ class RemoteExecutorGrpcStubTest(absltest.TestCase):
     )
     stub = create_stub()
 
-    with self.assertRaises(executors_errors.RetryableError):
+    with self.assertRaises(federated_language.framework.RetryableError):
       stub.create_value(request=executor_pb2.CreateValueRequest())
 
   def test_create_value_reraises_grpc_error(self, mock_executor_grpc_stub):
@@ -182,7 +187,7 @@ class RemoteExecutorGrpcStubTest(absltest.TestCase):
     )
     stub = create_stub()
 
-    with self.assertRaises(executors_errors.RetryableError):
+    with self.assertRaises(federated_language.framework.RetryableError):
       stub.create_call(request=executor_pb2.CreateCallRequest())
 
   def test_create_call_reraises_grpc_error(self, mock_executor_grpc_stub):
@@ -225,7 +230,7 @@ class RemoteExecutorGrpcStubTest(absltest.TestCase):
     )
     stub = create_stub()
 
-    with self.assertRaises(executors_errors.RetryableError):
+    with self.assertRaises(federated_language.framework.RetryableError):
       stub.create_struct(request=executor_pb2.CreateStructRequest())
 
   def test_create_struct_reraises_grpc_error(self, mock_executor_grpc_stub):
@@ -270,7 +275,7 @@ class RemoteExecutorGrpcStubTest(absltest.TestCase):
     )
     stub = create_stub()
 
-    with self.assertRaises(executors_errors.RetryableError):
+    with self.assertRaises(federated_language.framework.RetryableError):
       stub.create_selection(request=executor_pb2.CreateSelectionRequest())
 
   def test_create_selection_reraises_non_retryable_grpc_error(

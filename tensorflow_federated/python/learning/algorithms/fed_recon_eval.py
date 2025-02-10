@@ -26,18 +26,15 @@ then (2) with the reconstructed local variables.
 """
 
 import collections
-import functools
 from typing import Any, Optional
 
+import federated_language
 import tensorflow as tf
 
 from tensorflow_federated.python.aggregators import mean
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
+from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_types
 from tensorflow_federated.python.core.templates import aggregation_process
 from tensorflow_federated.python.core.templates import measured_process as measured_process_lib
 from tensorflow_federated.python.learning.algorithms import fed_recon
@@ -45,6 +42,8 @@ from tensorflow_federated.python.learning.metrics import keras_finalizer as metr
 from tensorflow_federated.python.learning.metrics import sum_aggregation_factory
 from tensorflow_federated.python.learning.models import reconstruction_model
 from tensorflow_federated.python.learning.optimizers import keras_optimizer
+from tensorflow_federated.python.learning.optimizers import optimizer as optimizer_base
+from tensorflow_federated.python.learning.optimizers import sgdm
 from tensorflow_federated.python.learning.templates import client_works
 from tensorflow_federated.python.learning.templates import composers
 from tensorflow_federated.python.learning.templates import distributors
@@ -60,8 +59,8 @@ def build_fed_recon_eval(
     *,  # Callers pass below args by name.
     loss_fn: fed_recon.LossFn,
     metrics_fn: Optional[fed_recon.MetricsFn] = None,
-    reconstruction_optimizer_fn: fed_recon.OptimizerFn = functools.partial(
-        tf.keras.optimizers.SGD, learning_rate=0.1
+    reconstruction_optimizer_fn: optimizer_base.Optimizer = sgdm.build_sgdm(
+        learning_rate=0.1
     ),
     dataset_split_fn: Optional[
         reconstruction_model.ReconstructionDatasetSplitFn
@@ -71,7 +70,7 @@ def build_fed_recon_eval(
         aggregation_process.AggregationProcess
     ] = None,
 ) -> learning_process_lib.LearningProcess:
-  """Builds a `tff.Computation` for evaluating a reconstruction `Model`.
+  """Builds a `federated_language.Computation` for evaluating a reconstruction `Model`.
 
   The returned computation proceeds in two stages: (1) reconstruction and (2)
   evaluation. During the reconstruction stage, local variables are reconstructed
@@ -100,8 +99,7 @@ def build_fed_recon_eval(
       during the evaluation stage. Final metric values are the example-weighted
       mean of metric values across batches (and across clients). If None, no
       metrics are applied.
-    reconstruction_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a
-      no-arg function that returns a `tf.keras.optimizers.Optimizer` used to
+    reconstruction_optimizer_fn: A `tff.learning.optimizers.Optimizer` used to
       reconstruct the local variables with the global ones frozen.
     dataset_split_fn: A `tff.learning.models.ReconstructionDatasetSplitFn`
       taking in a single TF dataset and producing two TF datasets. The first is
@@ -144,7 +142,7 @@ def build_fed_recon_eval(
           f'`tff.learning.models.ReconstructionModel`. Got a: {type(model)}'
       )
     nonlocal batch_type
-    batch_type = computation_types.tensorflow_to_type(model.input_spec)
+    batch_type = tensorflow_types.to_type(model.input_spec)
     return reconstruction_model.ReconstructionModel.get_global_variables(model)
 
   if dataset_split_fn is None:
@@ -155,7 +153,7 @@ def build_fed_recon_eval(
     )
 
   model_weights_type = build_initial_model_weights.type_signature.result
-  dataset_type = computation_types.SequenceType(batch_type)
+  dataset_type = federated_language.SequenceType(batch_type)
 
   if model_distributor is None:
     model_distributor = distributors.build_broadcast_process(model_weights_type)
@@ -305,24 +303,28 @@ def build_fed_recon_eval(
         'metrics_aggregation_process',
     )
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def client_initialize():
     return metrics_aggregation_process.initialize()
 
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       client_initialize.type_signature.result,
-      computation_types.FederatedType(model_weights_type, placements.CLIENTS),
-      computation_types.FederatedType(dataset_type, placements.CLIENTS),
+      federated_language.FederatedType(
+          model_weights_type, federated_language.CLIENTS
+      ),
+      federated_language.FederatedType(
+          dataset_type, federated_language.CLIENTS
+      ),
   )
   def client_work(state, model_weights, client_dataset):
-    unfinalized_metrics = intrinsics.federated_map(
+    unfinalized_metrics = federated_language.federated_map(
         client_computation, (model_weights, client_dataset)
     )
     metrics_output = metrics_aggregation_process.next(
         state, unfinalized_metrics
     )
     current_round_metrics, total_rounds_metrics = metrics_output.result
-    measurements = intrinsics.federated_zip(
+    measurements = federated_language.federated_zip(
         collections.OrderedDict(
             eval=collections.OrderedDict(
                 current_round_metrics=current_round_metrics,
@@ -331,9 +333,9 @@ def build_fed_recon_eval(
         )
     )
     # Return empty result as no model update will be performed for evaluation.
-    empty_client_result = intrinsics.federated_value(
+    empty_client_result = federated_language.federated_value(
         client_works.ClientResult(update=(), update_weight=()),
-        placements.CLIENTS,
+        federated_language.CLIENTS,
     )
     return measured_process_lib.MeasuredProcessOutput(
         metrics_output.state,
@@ -347,8 +349,9 @@ def build_fed_recon_eval(
 
   # The evaluation will *not* send model updates back, only metrics; so the type
   # is simply an empty tuple.
-  empty_client_work_result_type = computation_types.FederatedType(
-      client_works.ClientResult(update=(), update_weight=()), placements.CLIENTS
+  empty_client_work_result_type = federated_language.FederatedType(
+      client_works.ClientResult(update=(), update_weight=()),
+      federated_language.CLIENTS,
   )
   empty_model_update_type = empty_client_work_result_type.member.update  # pytype: disable=attribute-error
   empty_model_update_weight_type = (

@@ -43,9 +43,9 @@ Federated Reconstruction: Partially Local Federated Learning
 
 import collections
 from collections.abc import Callable
-import functools
 from typing import Any, Optional, Union
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 
@@ -54,11 +54,7 @@ from tensorflow_federated.python.aggregators import factory_utils
 from tensorflow_federated.python.aggregators import mean
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.computation import computation_base
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
+from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_types
 from tensorflow_federated.python.core.templates import measured_process as measured_process_lib
 from tensorflow_federated.python.learning import client_weight_lib
 from tensorflow_federated.python.learning import tensor_utils
@@ -67,6 +63,7 @@ from tensorflow_federated.python.learning.metrics import keras_finalizer as metr
 from tensorflow_federated.python.learning.models import reconstruction_model
 from tensorflow_federated.python.learning.optimizers import keras_optimizer
 from tensorflow_federated.python.learning.optimizers import optimizer as optimizer_base
+from tensorflow_federated.python.learning.optimizers import sgdm
 from tensorflow_federated.python.learning.templates import apply_optimizer_finalizer
 from tensorflow_federated.python.learning.templates import client_works
 from tensorflow_federated.python.learning.templates import composers
@@ -82,9 +79,6 @@ LossFn = Callable[[], tf.keras.losses.Loss]
 MetricsFn = Callable[[], list[tf.keras.metrics.Metric]]
 MetricFinalizersType = collections.OrderedDict[str, Callable[[Any], Any]]
 ModelFn = Callable[[], ReconstructionModel]
-OptimizerFn = Union[
-    Callable[[], tf.keras.optimizers.Optimizer], optimizer_base.Optimizer
-]
 
 
 # TODO: b/230109170 - re-enable pylint after fixing bug.
@@ -94,17 +88,17 @@ def _build_reconstruction_client_work(
     *,  # Callers should use keyword args for below.
     loss_fn: LossFn,
     metrics_fn: Optional[MetricsFn],
-    client_optimizer_fn: OptimizerFn,
-    reconstruction_optimizer_fn: OptimizerFn,
+    client_optimizer_fn: optimizer_base.Optimizer,
+    reconstruction_optimizer_fn: optimizer_base.Optimizer,
     dataset_split_fn: reconstruction_model.ReconstructionDatasetSplitFn,
     client_weighting: client_weight_lib.ClientWeightType,
     metrics_aggregator: Callable[
-        [MetricFinalizersType, computation_types.StructWithPythonType],
-        computation_base.Computation,
+        [MetricFinalizersType, federated_language.StructWithPythonType],
+        federated_language.framework.Computation,
     ],
 ) -> client_works.ClientWorkProcess:
   # pylint: enable=g-bare-generic
-  """Builds a `tff.Computation` for local reconstruction and update.
+  """Builds a `federated_language.Computation` for local reconstruction and update.
 
   Args:
     model_fn: A no-arg function that returns a
@@ -119,11 +113,9 @@ def _build_reconstruction_client_work(
       by the metric, and are aggregated across clients as in
       `federated_aggregate_keras_metric`. If None, no metrics are applied.
       Metrics are not computed on reconstruction batches.
-    client_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a no-arg
-      function that returns a `tf.keras.optimizers.Optimizer` for training the
+    client_optimizer_fn: A `tff.learning.optimizers.Optimizer` for training the
       model weights on the client post-reconstruction.
-    reconstruction_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a
-      no-arg function that returns a `tf.keras.optimizers.Optimizer` for
+    reconstruction_optimizer_fn: A `tff.learning.optimizers.Optimizer` for
       reconstructing the local variables with global variables frozen. This
       optimizer is used before the one given by `client_optimizer_fn`.
     dataset_split_fn: A `tff.learning.models.ReconstructionDatasetSplitFn`
@@ -138,9 +130,10 @@ def _build_reconstruction_client_work(
       average of model deltas.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.Model.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of `tff.learning.Model.report_local_unfinalized_metrics()`), and
-      returns a `tff.Computation` for aggregating the unfinalized metrics.
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
+      `tff.learning.Model.report_local_unfinalized_metrics()`), and returns a
+      `federated_language.Computation` for aggregating the unfinalized metrics.
 
   Returns:
     A `tff.learning.templates.ClientWorkProcess` for the local client update.
@@ -150,15 +143,13 @@ def _build_reconstruction_client_work(
   model_weights_type = reconstruction_model.global_weights_type_from_model(
       model_for_metadata
   )
-  element_type = computation_types.tensorflow_to_type(
-      model_for_metadata.input_spec
-  )
-  dataset_type = computation_types.SequenceType(element_type)
+  element_type = tensorflow_types.to_type(model_for_metadata.input_spec)
+  dataset_type = federated_language.SequenceType(element_type)
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def initialize():
     # FedRecon client work is stateless (empty tuple).
-    return intrinsics.federated_value((), placements.SERVER)
+    return federated_language.federated_value((), federated_language.SERVER)
 
   # Metric finalizer functions that will be populated while tracing
   # `client_update` and used later in the federated computation.
@@ -343,26 +334,30 @@ def _build_reconstruction_client_work(
         unfinalized_metrics,
     )
 
-  @federated_computation.federated_computation(
-      computation_types.FederatedType((), placements.SERVER),
-      computation_types.FederatedType(model_weights_type, placements.CLIENTS),
-      computation_types.FederatedType(dataset_type, placements.CLIENTS),
+  @federated_language.federated_computation(
+      federated_language.FederatedType((), federated_language.SERVER),
+      federated_language.FederatedType(
+          model_weights_type, federated_language.CLIENTS
+      ),
+      federated_language.FederatedType(
+          dataset_type, federated_language.CLIENTS
+      ),
   )
   def next_fn(state, incoming_model_weights, client_datasets):
     del state  # Unused.
-    client_result, unfinalized_metrics = intrinsics.federated_map(
+    client_result, unfinalized_metrics = federated_language.federated_map(
         client_update, (incoming_model_weights, client_datasets)
     )
     metrics_aggregation_computation = metrics_aggregator(
         metric_finalizers, unfinalized_metrics.type_signature.member
     )
-    finalized_metrics = intrinsics.federated_zip(
+    finalized_metrics = federated_language.federated_zip(
         collections.OrderedDict(
             train=metrics_aggregation_computation(unfinalized_metrics)
         )
     )
     return measured_process_lib.MeasuredProcessOutput(
-        state=intrinsics.federated_value((), placements.SERVER),
+        state=federated_language.federated_value((), federated_language.SERVER),
         result=client_result,
         measurements=finalized_metrics,
     )
@@ -384,14 +379,14 @@ def build_fed_recon(
     *,  # Callers pass below args by name.
     loss_fn: LossFn,
     metrics_fn: Optional[MetricsFn] = None,
-    server_optimizer_fn: OptimizerFn = functools.partial(
-        tf.keras.optimizers.SGD, 1.0
+    server_optimizer_fn: optimizer_base.Optimizer = sgdm.build_sgdm(
+        learning_rate=1.0
     ),
-    client_optimizer_fn: OptimizerFn = functools.partial(
-        tf.keras.optimizers.SGD, 0.1
+    client_optimizer_fn: optimizer_base.Optimizer = sgdm.build_sgdm(
+        learning_rate=0.1
     ),
-    reconstruction_optimizer_fn: OptimizerFn = functools.partial(
-        tf.keras.optimizers.SGD, 0.1
+    reconstruction_optimizer_fn: optimizer_base.Optimizer = sgdm.build_sgdm(
+        learning_rate=0.1
     ),
     dataset_split_fn: Optional[
         reconstruction_model.ReconstructionDatasetSplitFn
@@ -401,8 +396,8 @@ def build_fed_recon(
     model_aggregator_factory: Optional[AggregationFactory] = None,
     metrics_aggregator: Optional[
         Callable[
-            [MetricFinalizersType, computation_types.StructWithPythonType],
-            computation_base.Computation,
+            [MetricFinalizersType, federated_language.StructWithPythonType],
+            federated_language.framework.Computation,
         ]
     ] = metrics_aggregators.sum_then_finalize,
 ) -> learning_process.LearningProcess:
@@ -429,14 +424,11 @@ def build_fed_recon(
       by the metric, and are aggregated across clients as in
       `federated_aggregate_keras_metric`. If None, no metrics are applied.
       Metrics are not computed on reconstruction batches.
-    server_optimizer_fn:  A `tff.learning.optimizers.Optimizer`, or a no-arg
-      function that returns a `tf.keras.optimizers.Optimizer` for applying
+    server_optimizer_fn:  A `tff.learning.optimizers.Optimizer`for applying
       updates to the global model on the server.
-    client_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a no-arg
-      function that returns a `tf.keras.optimizers.Optimizer` for local client
+    client_optimizer_fn: A `tff.learning.optimizers.Optimizer` for local client
       training after reconstruction.
-    reconstruction_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a
-      no-arg function that returns a `tf.keras.optimizers.Optimizer` used to
+    reconstruction_optimizer_fn: A `tff.learning.optimizers.Optimizer` used to
       reconstruct the local variables, with the global ones frozen, or the first
       stage described above.
     dataset_split_fn: A `tff.learning.models.ReconstructionDatasetSplitFn`
@@ -466,10 +458,11 @@ def build_fed_recon(
       clients (weighted depending on `client_weighting`).
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.Model.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of `tff.learning.Model.report_local_unfinalized_metrics()`), and
-      returns a `tff.Computation` for aggregating the unfinalized metrics. If
-      `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
+      `tff.learning.Model.report_local_unfinalized_metrics()`), and returns a
+      `federated_language.Computation` for aggregating the unfinalized metrics.
+      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
 
   Returns:
     A `tff.learning.templates.LearningProcess`.
@@ -519,7 +512,7 @@ def build_fed_recon(
       model_aggregator_factory, factory.WeightedAggregationFactory
   )
   model_aggregator = model_aggregator_factory.create(
-      model_weights_type.trainable, computation_types.TensorType(np.float32)
+      model_weights_type.trainable, federated_language.TensorType(np.float32)
   )
 
   if dataset_split_fn is None:

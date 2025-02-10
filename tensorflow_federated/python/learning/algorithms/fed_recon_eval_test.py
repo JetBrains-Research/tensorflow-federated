@@ -18,16 +18,12 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 import attrs
+import federated_language
 import numpy as np
 import tensorflow as tf
 
 from tensorflow_federated.python.core.backends.native import execution_contexts
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
-from tensorflow_federated.python.core.impl.types import type_test_utils
 from tensorflow_federated.python.core.templates import measured_process as measured_process_lib
 from tensorflow_federated.python.learning.algorithms import fed_recon_eval
 from tensorflow_federated.python.learning.metrics import counters
@@ -39,9 +35,9 @@ from tensorflow_federated.python.learning.templates import learning_process as l
 
 
 # Convenience aliases.
-FunctionType = computation_types.FunctionType
-SequenceType = computation_types.SequenceType
-TensorType = computation_types.TensorType
+FunctionType = federated_language.FunctionType
+SequenceType = federated_language.SequenceType
+TensorType = federated_language.TensorType
 LearningAlgorithmState = composers.LearningAlgorithmState
 LearningProcessOutput = learning_process_lib.LearningProcessOutput
 
@@ -179,20 +175,10 @@ def _get_tff_optimizer(learning_rate=0.1):
   return sgdm.build_sgdm(learning_rate=learning_rate, momentum=0.5)
 
 
-def _get_keras_optimizer_fn(learning_rate=0.1):
-  return lambda: tf.keras.optimizers.SGD(learning_rate=learning_rate)
-
-
 class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ('non_keras_model_with_keras_opt', LinearModel, _get_keras_optimizer_fn),
       ('non_keras_model_with_tff_opt', LinearModel, _get_tff_optimizer),
-      (
-          'keras_model_with_keras_opt',
-          keras_linear_model_fn,
-          _get_keras_optimizer_fn,
-      ),
       ('keras_model_with_tff_opt', keras_linear_model_fn, _get_tff_optimizer),
   )
   def test_federated_reconstruction_no_split_data(self, model_fn, optimizer_fn):
@@ -216,7 +202,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     global_weights_type = reconstruction_model.global_weights_type_from_model(
         model_fn()
     )
-    state_type = computation_types.FederatedType(
+    state_type = federated_language.FederatedType(
         LearningAlgorithmState(
             global_model_weights=global_weights_type,
             distributor=(),
@@ -233,26 +219,26 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
             ),
             finalizer=(),
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
-    type_test_utils.assert_types_identical(
+    self.assertEqual(
         evaluate.next.type_signature,
         FunctionType(
             parameter=collections.OrderedDict(
                 state=state_type,
-                client_data=computation_types.FederatedType(
+                client_data=federated_language.FederatedType(
                     SequenceType(
                         collections.OrderedDict(
                             x=TensorType(np.float32, [None, 1]),
                             y=TensorType(np.float32, [None, 1]),
                         )
                     ),
-                    placements.CLIENTS,
+                    federated_language.CLIENTS,
                 ),
             ),
             result=LearningProcessOutput(
                 state=state_type,
-                metrics=computation_types.FederatedType(
+                metrics=federated_language.FederatedType(
                     collections.OrderedDict(
                         distributor=(),
                         client_work=collections.OrderedDict(
@@ -274,7 +260,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
                         ),
                         finalizer=(),
                     ),
-                    placements.SERVER,
+                    federated_language.SERVER,
                 ),
             ),
         ),
@@ -300,13 +286,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(eval_result['num_over'], 3.0)
 
   @parameterized.named_parameters(
-      ('non_keras_model_with_keras_opt', LinearModel, _get_keras_optimizer_fn),
       ('non_keras_model_with_tff_opt', LinearModel, _get_tff_optimizer),
-      (
-          'keras_model_with_keras_opt',
-          keras_linear_model_fn,
-          _get_keras_optimizer_fn,
-      ),
       ('keras_model_with_tff_opt', keras_linear_model_fn, _get_tff_optimizer),
   )
   def test_federated_reconstruction_split_data(self, model_fn, optimizer_fn):
@@ -326,7 +306,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     global_weights_type = reconstruction_model.global_weights_type_from_model(
         model_fn()
     )
-    state_type = computation_types.FederatedType(
+    state_type = federated_language.FederatedType(
         LearningAlgorithmState(
             global_model_weights=global_weights_type,
             distributor=(),
@@ -343,26 +323,26 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
             ),
             finalizer=(),
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
-    type_test_utils.assert_types_identical(
+    self.assertEqual(
         evaluate.next.type_signature,
         FunctionType(
             parameter=collections.OrderedDict(
                 state=state_type,
-                client_data=computation_types.FederatedType(
+                client_data=federated_language.FederatedType(
                     SequenceType(
                         collections.OrderedDict(
                             x=TensorType(np.float32, [None, 1]),
                             y=TensorType(np.float32, [None, 1]),
                         )
                     ),
-                    placements.CLIENTS,
+                    federated_language.CLIENTS,
                 ),
             ),
             result=LearningProcessOutput(
                 state=state_type,
-                metrics=computation_types.FederatedType(
+                metrics=federated_language.FederatedType(
                     collections.OrderedDict(
                         distributor=(),
                         client_work=collections.OrderedDict(
@@ -384,7 +364,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
                         ),
                         finalizer=(),
                     ),
-                    placements.SERVER,
+                    federated_language.SERVER,
                 ),
             ),
         ),
@@ -398,13 +378,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(eval_result['num_over'], 1.0)
 
   @parameterized.named_parameters(
-      ('non_keras_model_with_keras_opt', LinearModel, _get_keras_optimizer_fn),
       ('non_keras_model_with_tff_opt', LinearModel, _get_tff_optimizer),
-      (
-          'keras_model_with_keras_opt',
-          keras_linear_model_fn,
-          _get_keras_optimizer_fn,
-      ),
       ('keras_model_with_tff_opt', keras_linear_model_fn, _get_tff_optimizer),
   )
   def test_federated_reconstruction_split_data_multiple_epochs(
@@ -435,7 +409,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     global_weights_type = reconstruction_model.global_weights_type_from_model(
         model_fn()
     )
-    state_type = computation_types.FederatedType(
+    state_type = federated_language.FederatedType(
         LearningAlgorithmState(
             global_model_weights=global_weights_type,
             distributor=(),
@@ -452,26 +426,26 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
             ),
             finalizer=(),
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
-    type_test_utils.assert_types_identical(
+    self.assertEqual(
         evaluate.next.type_signature,
         FunctionType(
             parameter=collections.OrderedDict(
                 state=state_type,
-                client_data=computation_types.FederatedType(
+                client_data=federated_language.FederatedType(
                     SequenceType(
                         collections.OrderedDict(
                             x=TensorType(np.float32, [None, 1]),
                             y=TensorType(np.float32, [None, 1]),
                         )
                     ),
-                    placements.CLIENTS,
+                    federated_language.CLIENTS,
                 ),
             ),
             result=LearningProcessOutput(
                 state=state_type,
-                metrics=computation_types.FederatedType(
+                metrics=federated_language.FederatedType(
                     collections.OrderedDict(
                         distributor=(),
                         client_work=collections.OrderedDict(
@@ -493,7 +467,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
                         ),
                         finalizer=(),
                     ),
-                    placements.SERVER,
+                    federated_language.SERVER,
                 ),
             ),
         ),
@@ -507,13 +481,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(eval_result['num_over'], 7.0)
 
   @parameterized.named_parameters(
-      ('non_keras_model_with_keras_opt', LinearModel, _get_keras_optimizer_fn),
       ('non_keras_model_with_tff_opt', LinearModel, _get_tff_optimizer),
-      (
-          'keras_model_with_keras_opt',
-          keras_linear_model_fn,
-          _get_keras_optimizer_fn,
-      ),
       ('keras_model_with_tff_opt', keras_linear_model_fn, _get_tff_optimizer),
   )
   def test_federated_reconstruction_recon_lr_0(self, model_fn, optimizer_fn):
@@ -538,7 +506,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     global_weights_type = reconstruction_model.global_weights_type_from_model(
         model_fn()
     )
-    state_type = computation_types.FederatedType(
+    state_type = federated_language.FederatedType(
         LearningAlgorithmState(
             global_model_weights=global_weights_type,
             distributor=(),
@@ -555,26 +523,26 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
             ),
             finalizer=(),
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
-    type_test_utils.assert_types_identical(
+    self.assertEqual(
         evaluate.next.type_signature,
         FunctionType(
             parameter=collections.OrderedDict(
                 state=state_type,
-                client_data=computation_types.FederatedType(
+                client_data=federated_language.FederatedType(
                     SequenceType(
                         collections.OrderedDict(
                             x=TensorType(np.float32, [None, 1]),
                             y=TensorType(np.float32, [None, 1]),
                         )
                     ),
-                    placements.CLIENTS,
+                    federated_language.CLIENTS,
                 ),
             ),
             result=LearningProcessOutput(
                 state=state_type,
-                metrics=computation_types.FederatedType(
+                metrics=federated_language.FederatedType(
                     collections.OrderedDict(
                         distributor=(),
                         client_work=collections.OrderedDict(
@@ -596,7 +564,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
                         ),
                         finalizer=(),
                     ),
-                    placements.SERVER,
+                    federated_language.SERVER,
                 ),
             ),
         ),
@@ -620,13 +588,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(eval_result['num_over'], 3.0)
 
   @parameterized.named_parameters(
-      ('non_keras_model_with_keras_opt', LinearModel, _get_keras_optimizer_fn),
       ('non_keras_model_with_tff_opt', LinearModel, _get_tff_optimizer),
-      (
-          'keras_model_with_keras_opt',
-          keras_linear_model_fn,
-          _get_keras_optimizer_fn,
-      ),
       ('keras_model_with_tff_opt', keras_linear_model_fn, _get_tff_optimizer),
   )
   def test_federated_reconstruction_skip_recon(self, model_fn, optimizer_fn):
@@ -649,7 +611,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     global_weights_type = reconstruction_model.global_weights_type_from_model(
         model_fn()
     )
-    state_type = computation_types.FederatedType(
+    state_type = federated_language.FederatedType(
         LearningAlgorithmState(
             global_model_weights=global_weights_type,
             distributor=(),
@@ -666,26 +628,26 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
             ),
             finalizer=(),
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
-    type_test_utils.assert_types_identical(
+    self.assertEqual(
         evaluate.next.type_signature,
         FunctionType(
             parameter=collections.OrderedDict(
                 state=state_type,
-                client_data=computation_types.FederatedType(
+                client_data=federated_language.FederatedType(
                     SequenceType(
                         collections.OrderedDict(
                             x=TensorType(np.float32, [None, 1]),
                             y=TensorType(np.float32, [None, 1]),
                         )
                     ),
-                    placements.CLIENTS,
+                    federated_language.CLIENTS,
                 ),
             ),
             result=LearningProcessOutput(
                 state=state_type,
-                metrics=computation_types.FederatedType(
+                metrics=federated_language.FederatedType(
                     collections.OrderedDict(
                         distributor=(),
                         client_work=collections.OrderedDict(
@@ -707,7 +669,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
                         ),
                         finalizer=(),
                     ),
-                    placements.SERVER,
+                    federated_language.SERVER,
                 ),
             ),
         ),
@@ -731,13 +693,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(eval_result['num_over'], 6.0)
 
   @parameterized.named_parameters(
-      ('non_keras_model_with_keras_opt', LinearModel, _get_keras_optimizer_fn),
       ('non_keras_model_with_tff_opt', LinearModel, _get_tff_optimizer),
-      (
-          'keras_model_with_keras_opt',
-          keras_linear_model_fn,
-          _get_keras_optimizer_fn,
-      ),
       ('keras_model_with_tff_opt', keras_linear_model_fn, _get_tff_optimizer),
   )
   def test_federated_reconstruction_metrics_none_loss_decreases(
@@ -761,7 +717,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     global_weights_type = reconstruction_model.global_weights_type_from_model(
         model_fn()
     )
-    state_type = computation_types.FederatedType(
+    state_type = federated_language.FederatedType(
         LearningAlgorithmState(
             global_model_weights=global_weights_type,
             distributor=(),
@@ -776,26 +732,26 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
             ),
             finalizer=(),
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
-    type_test_utils.assert_types_identical(
+    self.assertEqual(
         evaluate.next.type_signature,
         FunctionType(
             parameter=collections.OrderedDict(
                 state=state_type,
-                client_data=computation_types.FederatedType(
+                client_data=federated_language.FederatedType(
                     SequenceType(
                         collections.OrderedDict(
                             x=TensorType(np.float32, [None, 1]),
                             y=TensorType(np.float32, [None, 1]),
                         )
                     ),
-                    placements.CLIENTS,
+                    federated_language.CLIENTS,
                 ),
             ),
             result=LearningProcessOutput(
                 state=state_type,
-                metrics=computation_types.FederatedType(
+                metrics=federated_language.FederatedType(
                     collections.OrderedDict(
                         distributor=(),
                         client_work=collections.OrderedDict(
@@ -813,7 +769,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
                         ),
                         finalizer=(),
                     ),
-                    placements.SERVER,
+                    federated_language.SERVER,
                 ),
             ),
         ),
@@ -851,28 +807,30 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     def build_custom_distributor(
         model_weights_type,
     ) -> distributors.DistributionProcess:
-      """Builds a `DistributionProcess` that wraps `tff.federated_broadcast`."""
+      """Builds a `DistributionProcess` that wraps `federated_language.federated_broadcast`."""
 
-      @federated_computation.federated_computation()
+      @federated_language.federated_computation()
       def test_server_initialization():
         # Count the number of calls.
-        return intrinsics.federated_value(0, placements.SERVER)
+        return federated_language.federated_value(0, federated_language.SERVER)
 
-      @federated_computation.federated_computation(
-          computation_types.FederatedType(np.int32, placements.SERVER),
-          computation_types.FederatedType(
-              model_weights_type, placements.SERVER
+      @federated_language.federated_computation(
+          federated_language.FederatedType(np.int32, federated_language.SERVER),
+          federated_language.FederatedType(
+              model_weights_type, federated_language.SERVER
           ),
       )
       def stateful_broadcast(state, value):
-        test_metrics = intrinsics.federated_value(3.0, placements.SERVER)
-        new_state = intrinsics.federated_map(
+        test_metrics = federated_language.federated_value(
+            3.0, federated_language.SERVER
+        )
+        new_state = federated_language.federated_map(
             tensorflow_computation.tf_computation(lambda x: x + 1),
             state,
         )
         return measured_process_lib.MeasuredProcessOutput(
             state=new_state,
-            result=intrinsics.federated_broadcast(value),
+            result=federated_language.federated_broadcast(value),
             measurements=test_metrics,
         )
 
@@ -891,7 +849,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
     global_weights_type = reconstruction_model.global_weights_type_from_model(
         model_fn()
     )
-    state_type = computation_types.FederatedType(
+    state_type = federated_language.FederatedType(
         LearningAlgorithmState(
             global_model_weights=global_weights_type,
             distributor=np.int32,
@@ -908,26 +866,26 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
             ),
             finalizer=(),
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
-    type_test_utils.assert_types_identical(
+    self.assertEqual(
         evaluate.next.type_signature,
         FunctionType(
             parameter=collections.OrderedDict(
                 state=state_type,
-                client_data=computation_types.FederatedType(
+                client_data=federated_language.FederatedType(
                     SequenceType(
                         collections.OrderedDict(
                             x=TensorType(np.float32, [None, 1]),
                             y=TensorType(np.float32, [None, 1]),
                         )
                     ),
-                    placements.CLIENTS,
+                    federated_language.CLIENTS,
                 ),
             ),
             result=LearningProcessOutput(
                 state=state_type,
-                metrics=computation_types.FederatedType(
+                metrics=federated_language.FederatedType(
                     collections.OrderedDict(
                         distributor=np.float32,
                         client_work=collections.OrderedDict(
@@ -949,7 +907,7 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
                         ),
                         finalizer=(),
                     ),
-                    placements.SERVER,
+                    federated_language.SERVER,
                 ),
             ),
         ),
@@ -970,7 +928,6 @@ class FedreconEvaluationTest(tf.test.TestCase, parameterized.TestCase):
       return tf.keras.losses.MeanSquaredError()
 
     fed_recon_eval.build_fed_recon_eval(model_fn=mock_model_fn, loss_fn=loss_fn)
-    # TODO: b/186451541 - Reduce the number of calls to model_fn.
     self.assertEqual(mock_model_fn.call_count, 2)
 
 

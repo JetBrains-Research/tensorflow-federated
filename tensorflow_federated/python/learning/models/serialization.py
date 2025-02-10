@@ -16,17 +16,15 @@
 import collections
 import functools
 
+import federated_language
+from federated_language.proto import computation_pb2
 import tensorflow as tf
 
-from tensorflow_federated.proto.v0 import computation_pb2
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.common_libs import structure
+from tensorflow_federated.python.core.environments.tensorflow_backend import type_conversions
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.computation import computation_impl
-from tensorflow_federated.python.core.impl.context_stack import context_stack_impl
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import type_conversions
-from tensorflow_federated.python.core.impl.types import type_serialization
+from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_types
 from tensorflow_federated.python.learning.models import functional
 from tensorflow_federated.python.learning.models import variable
 
@@ -125,9 +123,9 @@ class _LoadedSavedModel(variable.VariableModel):
       computation_proto = computation_pb2.Computation.FromString(
           finalizer.read_value().numpy()
       )
-      return computation_impl.ConcreteComputation(
+      return federated_language.framework.ConcreteComputation(
           computation_proto=computation_proto,
-          context_stack=context_stack_impl.context_stack,
+          context_stack=federated_language.framework.get_context_stack(),
       )
 
     return collections.OrderedDict(
@@ -163,23 +161,22 @@ def _make_concrete_flat_output_fn(fn, *args, **kwargs):
     **kwargs: Keyword arguments to `tf.function.get_concrete_function`.
 
   Returns:
-    A 2-tuple of concrete `tf.function` instance and a `tff.Type` protocol
+    A 2-tuple of concrete `tf.function` instance and a `federated_language.Type`
+    protocol
     buffer message documenting the result structure returned by the concrete
     function.
   """
   concrete_fn = tf.function(fn).get_concrete_function(*args, **kwargs)
 
   def _create_tensor_type(dtype, shape):
-    return computation_types.tensorflow_to_type((dtype, shape))
+    return tensorflow_types.to_type((dtype, shape))
 
   tensor_types = tf.nest.map_structure(
       _create_tensor_type,
       concrete_fn.output_dtypes,
       concrete_fn.output_shapes,
   )
-  result_type_spec = type_serialization.serialize_type(
-      computation_types.to_type(tensor_types)
-  )
+  result_type_spec = federated_language.to_type(tensor_types).to_proto()
 
   def flattened_output(*args, **kwargs):
     return tf.nest.flatten(fn(*args, **kwargs))
@@ -191,17 +188,17 @@ def _make_concrete_flat_output_fn(fn, *args, **kwargs):
 
 
 def _deserialize_type_spec(serialize_type_variable, python_container=None):
-  """Deserialize a `tff.Type` protocol buffer into a python class instance."""
-  type_spec = type_serialization.deserialize_type(
+  """Deserialize a `federated_language.Type` protocol buffer into a python class instance."""
+  type_spec = federated_language.Type.from_proto(
       computation_pb2.Type.FromString(
           serialize_type_variable.read_value().numpy()
       )
   )
   if (
-      isinstance(type_spec, computation_types.StructType)
+      isinstance(type_spec, federated_language.StructType)
       and python_container is not None
   ):
-    type_spec = computation_types.StructWithPythonType(
+    type_spec = federated_language.StructWithPythonType(
         structure.iter_elements(type_spec),
         python_container,
     )
@@ -213,8 +210,9 @@ def _unflatten_fn(fn, serialized_type_variable, python_container=None):
 
   Args:
     fn: A tf.function loaded from a TensorFlow SavedModel.
-    serialized_type_variable: A `tf.Variable` holding the serialized `tff.Type`
-      protocol buffer message specifying the structured output format of `fn`.
+    serialized_type_variable: A `tf.Variable` holding the serialized
+      `federated_language.Type` protocol buffer message specifying the
+      structured output format of `fn`.
     python_container: A Python class that which the resulting
       `tff.struct.Struct` will be converted to.
 
@@ -338,9 +336,7 @@ def save(model: variable.VariableModel, path: str, input_type=None) -> None:
     finalizer_computation = tensorflow_computation.tf_computation(
         finalizer, metric_type
     )
-    computation_proto = computation_impl.ConcreteComputation.get_proto(
-        finalizer_computation
-    )
+    computation_proto = finalizer_computation.to_proto()
     return tf.Variable(
         computation_proto.SerializeToString(deterministic=True),
         trainable=False,
@@ -350,9 +346,9 @@ def save(model: variable.VariableModel, path: str, input_type=None) -> None:
     def type_for_normalized_tensor_value(value):
       tensor = tf.convert_to_tensor(value)
       tensor_spec = tf.TensorSpec.from_tensor(tensor)
-      return computation_types.tensorflow_to_type(tensor_spec)
+      return tensorflow_types.to_type(tensor_spec)
 
-    return computation_types.to_type(
+    return federated_language.to_type(
         tf.nest.map_structure(type_for_normalized_tensor_value, values)
     )
 
@@ -367,9 +363,9 @@ def save(model: variable.VariableModel, path: str, input_type=None) -> None:
   # Serialize the TFF values as string variables that contain the serialized
   # protos from the computation or the type.
   m.serialized_input_spec = tf.Variable(
-      type_serialization.serialize_type(
-          computation_types.tensorflow_to_type(model.input_spec)
-      ).SerializeToString(deterministic=True),
+      tensorflow_types.to_type(model.input_spec)
+      .to_proto()
+      .SerializeToString(deterministic=True),
       trainable=False,
   )
 
@@ -442,7 +438,8 @@ def save_functional_model(
         or evaluation loop.
 
     Returns:
-      A 2-tuple of concrete `tf.function` instance and a `tff.Type` protocol
+      A 2-tuple of concrete `tf.function` instance and a
+      `federated_language.Type` protocol
       buffer message documenting the result structure returned by the
       concrete function.
     """
@@ -462,9 +459,9 @@ def save_functional_model(
     output_tensor_spec_structure = tf.nest.map_structure(
         tf.TensorSpec.from_tensor, concrete_structured_fn.structured_outputs
     )
-    result_type_spec = type_serialization.serialize_type(
-        computation_types.tensorflow_to_type(output_tensor_spec_structure)
-    )
+    result_type_spec = tensorflow_types.to_type(
+        output_tensor_spec_structure
+    ).to_proto()
 
     @tf.function
     def flat_predict_on_batch(model_weights, x, training):
@@ -509,7 +506,8 @@ def save_functional_model(
     """Create a concrete loss function that has flattened output.
 
     Returns:
-      A 2-tuple of concrete `tf.function` instance and a `tff.Type` protocol
+      A 2-tuple of concrete `tf.function` instance and a
+      `federated_language.Type` protocol
       buffer message documenting the result structure returned by the concrete
       function.
     """
@@ -524,9 +522,9 @@ def save_functional_model(
     output_tensor_spec_structure = tf.nest.map_structure(
         tf.TensorSpec.from_tensor, concrete_structured_fn.structured_outputs
     )
-    result_type_spec = type_serialization.serialize_type(
-        computation_types.tensorflow_to_type(output_tensor_spec_structure)
-    )
+    result_type_spec = tensorflow_types.to_type(
+        output_tensor_spec_structure
+    ).to_proto()
 
     @tf.function
     def flat_loss(output, label, sample_weight=None):
@@ -553,9 +551,9 @@ def save_functional_model(
   # Serialize TFF values as string variables that contain the serialized
   # protos from the computation or the type.
   m.serialized_input_spec = tf.Variable(
-      type_serialization.serialize_type(
-          computation_types.tensorflow_to_type(functional_model.input_spec)
-      ).SerializeToString(deterministic=True),
+      tensorflow_types.to_type(functional_model.input_spec)
+      .to_proto()
+      .SerializeToString(deterministic=True),
       trainable=False,
   )
 

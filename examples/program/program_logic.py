@@ -28,7 +28,7 @@ import asyncio
 import typing
 from typing import NamedTuple, Optional
 
-import tensorflow_federated as tff
+import federated_language
 
 
 class UnexpectedTypeSignatureError(Exception):
@@ -37,11 +37,11 @@ class UnexpectedTypeSignatureError(Exception):
 
 def _check_expected_type_signatures(
     *,
-    initialize: tff.Computation,
-    train: tff.Computation,
-    train_data_source: tff.program.FederatedDataSource,
-    evaluation: tff.Computation,
-    evaluation_data_source: tff.program.FederatedDataSource,
+    initialize: federated_language.Computation,
+    train: federated_language.Computation,
+    train_data_source: federated_language.program.FederatedDataSource,
+    evaluation: federated_language.Computation,
+    evaluation_data_source: federated_language.program.FederatedDataSource,
 ) -> None:
   """Checks the computations and data sources for the expected type signatures.
 
@@ -49,20 +49,20 @@ def _check_expected_type_signatures(
   example, if you are using a `tff.learning.templates.LearningProcess` as an
   input to the program logic, then these checks might not make sense because the
   the `tff.learning.templates.LearningProcess` has already validated that those
-  `tff.Computation` have the expected type signatures.
+  `federated_language.Computation` have the expected type signatures.
 
   See `train_federated_model` for more information on the expected type
   signatures of the computations and data sources.
 
   Args:
-    initialize: A `tff.Computation` to invoke before training.
-    train: A `tff.Computation` to invoke during training.
-    train_data_source: A `tff.program.FederatedDataSource` which returns client
-      data used during training.
-    evaluation: A `tff.Computation` to invoke to evaluate the model produced
-      after training.
-    evaluation_data_source: A `tff.program.FederatedDataSource` which returns
-      client data used during evaluation.
+    initialize: A `federated_language.Computation` to invoke before training.
+    train: A `federated_language.Computation` to invoke during training.
+    train_data_source: A `federated_language.program.FederatedDataSource` which
+      returns client data used during training.
+    evaluation: A `federated_language.Computation` to invoke to evaluate the
+      model produced after training.
+    evaluation_data_source: A `federated_language.program.FederatedDataSource`
+      which returns client data used during evaluation.
 
   Raises:
     UnexpectedTypeSignatureError: If the computations or data sources have an
@@ -70,10 +70,10 @@ def _check_expected_type_signatures(
   """
 
   # Check initialize type.
-  if not isinstance(initialize.type_signature, tff.FunctionType):
+  if not isinstance(initialize.type_signature, federated_language.FunctionType):
     raise UnexpectedTypeSignatureError(
-        'Expected `initialize` to be a `tff.FunctionType`, found '
-        f'{initialize.type_signature}.'
+        'Expected `initialize` to be a `federated_language.FunctionType`,'
+        f' found {initialize.type_signature}.'
     )
 
   # Check initialize parameter type.
@@ -85,31 +85,39 @@ def _check_expected_type_signatures(
 
   # Check initialize result type.
   if (
-      not isinstance(initialize.type_signature.result, tff.FederatedType)
-      or initialize.type_signature.result.placement is not tff.SERVER
+      not isinstance(
+          initialize.type_signature.result, federated_language.FederatedType
+      )
+      or initialize.type_signature.result.placement
+      is not federated_language.SERVER
   ):
     raise UnexpectedTypeSignatureError(
-        'Expected `initialize` to return a `tff.FederatedType` placed at '
-        f'`tff.SERVER, found {initialize.type_signature.result}.'
+        'Expected `initialize` to return a `federated_language.FederatedType`'
+        ' placed at `federated_language.SERVER, found'
+        f' {initialize.type_signature.result}.'
     )
 
   # Check train data source type.
-  if train_data_source.federated_type.placement is not tff.CLIENTS:
+  if (
+      train_data_source.federated_type.placement
+      is not federated_language.CLIENTS
+  ):
     raise UnexpectedTypeSignatureError(
-        'Expected `train_data_source` to yield data placed at `tff.CLIENTS`, '
-        f'found {train_data_source.federated_type.placement}.'
+        'Expected `train_data_source` to yield data placed at'
+        ' `federated_language.CLIENTS`, found'
+        f' {train_data_source.federated_type.placement}.'
     )
 
   # Check train type.
-  if not isinstance(train.type_signature, tff.FunctionType):
+  if not isinstance(train.type_signature, federated_language.FunctionType):
     raise UnexpectedTypeSignatureError(
-        'Expected `train` to be a `tff.FunctionType`, found '
+        'Expected `train` to be a `federated_language.FunctionType`, found '
         f'{train.type_signature}.'
     )
 
   # Check train result type.
   if (
-      not isinstance(train.type_signature.result, tff.StructType)
+      not isinstance(train.type_signature.result, federated_language.StructType)
       or len(train.type_signature.result) != 2
   ):
     raise UnexpectedTypeSignatureError(
@@ -122,27 +130,33 @@ def _check_expected_type_signatures(
 
   # Check train result state type.
   if (
-      not isinstance(train_result_state_type, tff.FederatedType)
-      or train_result_state_type.placement is not tff.SERVER
+      not isinstance(train_result_state_type, federated_language.FederatedType)
+      or train_result_state_type.placement is not federated_language.SERVER
   ):
     raise UnexpectedTypeSignatureError(
-        'Expected the first result of `train` to be a `tff.FederatedType` '
-        f'placed at `tff.SERVER, found {train_result_state_type}.'
+        'Expected the first result of `train` to be a'
+        ' `federated_language.FederatedType` placed at'
+        f' `federated_language.SERVER, found {train_result_state_type}.'
     )
 
   # Check train result metrics type.
   if (
-      not isinstance(train_result_metrics_type, tff.FederatedType)
-      or train_result_metrics_type.placement is not tff.SERVER
+      not isinstance(
+          train_result_metrics_type, federated_language.FederatedType
+      )
+      or train_result_metrics_type.placement is not federated_language.SERVER
   ):
     raise UnexpectedTypeSignatureError(
-        'Expected the second result of `train` to be a `tff.FederatedType` '
-        f'placed at `tff.SERVER, found {train_result_metrics_type}.'
+        'Expected the second result of `train` to be a'
+        ' `federated_language.FederatedType` placed at'
+        f' `federated_language.SERVER, found {train_result_metrics_type}.'
     )
 
   # Check train parameter type.
   if (
-      not isinstance(train.type_signature.parameter, tff.StructType)
+      not isinstance(
+          train.type_signature.parameter, federated_language.StructType
+      )
       or len(train.type_signature.parameter) != 2
   ):
     raise UnexpectedTypeSignatureError(
@@ -155,12 +169,15 @@ def _check_expected_type_signatures(
 
   # Check train parameter state type.
   if (
-      not isinstance(train_parameter_state_type, tff.FederatedType)
-      or train_parameter_state_type.placement is not tff.SERVER
+      not isinstance(
+          train_parameter_state_type, federated_language.FederatedType
+      )
+      or train_parameter_state_type.placement is not federated_language.SERVER
   ):
     raise UnexpectedTypeSignatureError(
-        'Expected the first parameter of `train` to be a `tff.FederatedType` '
-        f'placed at `tff.SERVER, found {train_parameter_state_type}.'
+        'Expected the first parameter of `train` to be a'
+        ' `federated_language.FederatedType` placed at'
+        f' `federated_language.SERVER, found {train_parameter_state_type}.'
     )
   if not train_parameter_state_type.is_assignable_from(
       initialize.type_signature.result
@@ -181,12 +198,17 @@ def _check_expected_type_signatures(
 
   # Check train parameter client data type.
   if (
-      not isinstance(train_parameter_client_data_type, tff.FederatedType)
-      or train_parameter_client_data_type.placement is not tff.CLIENTS
+      not isinstance(
+          train_parameter_client_data_type, federated_language.FederatedType
+      )
+      or train_parameter_client_data_type.placement
+      is not federated_language.CLIENTS
   ):
     raise UnexpectedTypeSignatureError(
-        'Expected the second parameter of `train` to be a `tff.FederatedType` '
-        f'placed at `tff.CLIENTS, found {train_parameter_client_data_type}.'
+        'Expected the second parameter of `train` to be a'
+        ' `federated_language.FederatedType` placed at'
+        ' `federated_language.CLIENTS, found'
+        f' {train_parameter_client_data_type}.'
     )
   if not train_parameter_client_data_type.is_assignable_from(
       train_data_source.federated_type
@@ -200,23 +222,28 @@ def _check_expected_type_signatures(
     )
 
   # Check evaluation data source type.
-  if evaluation_data_source.federated_type.placement is not tff.CLIENTS:
+  if (
+      evaluation_data_source.federated_type.placement
+      is not federated_language.CLIENTS
+  ):
     raise UnexpectedTypeSignatureError(
         'Expected `evaluation_data_source` to yield data placed at '
-        '`tff.CLIENTS`, found'
+        '`federated_language.CLIENTS`, found'
         f' {evaluation_data_source.federated_type.placement}.'
     )
 
   # Check evaluation type.
-  if not isinstance(evaluation.type_signature, tff.FunctionType):
+  if not isinstance(evaluation.type_signature, federated_language.FunctionType):
     raise UnexpectedTypeSignatureError(
-        'Expected `evaluation` to be a `tff.FunctionType`, found '
-        f'{evaluation.type_signature}.'
+        'Expected `evaluation` to be a `federated_language.FunctionType`,'
+        f' found {evaluation.type_signature}.'
     )
 
   # Check evaluation parameter type.
   if (
-      not isinstance(evaluation.type_signature.parameter, tff.StructType)
+      not isinstance(
+          evaluation.type_signature.parameter, federated_language.StructType
+      )
       or len(evaluation.type_signature.parameter) != 2
   ):
     raise UnexpectedTypeSignatureError(
@@ -229,13 +256,16 @@ def _check_expected_type_signatures(
 
   # Check evaluation parameter state type.
   if (
-      not isinstance(evaluation_parameter_state_type, tff.FederatedType)
-      or evaluation_parameter_state_type.placement is not tff.SERVER
+      not isinstance(
+          evaluation_parameter_state_type, federated_language.FederatedType
+      )
+      or evaluation_parameter_state_type.placement
+      is not federated_language.SERVER
   ):
     raise UnexpectedTypeSignatureError(
-        'Expected the first parameter of `evaluation` to be a '
-        '`tff.FederatedType` placed at `tff.SERVER, found '
-        f'{evaluation_parameter_state_type}.'
+        'Expected the first parameter of `evaluation` to be a'
+        ' `federated_language.FederatedType` placed at'
+        f' `federated_language.SERVER, found {evaluation_parameter_state_type}.'
     )
   if not evaluation_parameter_state_type.is_assignable_from(
       train_result_state_type
@@ -250,13 +280,18 @@ def _check_expected_type_signatures(
 
   # Check evaluation parameter client data type.
   if (
-      not isinstance(evaluation_parameter_client_data_type, tff.FederatedType)
-      or evaluation_parameter_client_data_type.placement is not tff.CLIENTS
+      not isinstance(
+          evaluation_parameter_client_data_type,
+          federated_language.FederatedType,
+      )
+      or evaluation_parameter_client_data_type.placement
+      is not federated_language.CLIENTS
   ):
     raise UnexpectedTypeSignatureError(
-        'Expected the second parameter of `evaluation` to be a '
-        '`tff.FederatedType` placed at `tff.CLIENTS, found '
-        f'{evaluation_parameter_client_data_type}.'
+        'Expected the second parameter of `evaluation` to be a'
+        ' `federated_language.FederatedType` placed at'
+        ' `federated_language.CLIENTS, found'
+        f' {evaluation_parameter_client_data_type}.'
     )
   if not evaluation_parameter_client_data_type.is_assignable_from(
       evaluation_data_source.federated_type
@@ -272,12 +307,17 @@ def _check_expected_type_signatures(
 
   # Check evaluation result type.
   if (
-      not isinstance(evaluation.type_signature.result, tff.FederatedType)
-      or evaluation.type_signature.result.placement is not tff.SERVER
+      not isinstance(
+          evaluation.type_signature.result, federated_language.FederatedType
+      )
+      or evaluation.type_signature.result.placement
+      is not federated_language.SERVER
   ):
     raise UnexpectedTypeSignatureError(
-        'Expected the result of `train` to be a `tff.FederatedType` placed at '
-        f'`tff.SERVER, found {evaluation.type_signature.result}.'
+        'Expected the result of `train` to be a'
+        ' `federated_language.FederatedType` placed at'
+        ' `federated_language.SERVER, found'
+        f' {evaluation.type_signature.result}.'
     )
 
 
@@ -328,36 +368,43 @@ class _ProgramState(NamedTuple):
   Attributes:
     state: The server state produced at `round_num`.
     round_num: The training round.
-    iterator: The training `tff.program.FederatedDataSourceIterator`.
+    iterator: The training
+      `federated_language.program.FederatedDataSourceIterator`.
   """
 
   state: object
   round_num: int
-  iterator: tff.program.FederatedDataSourceIterator
+  iterator: federated_language.program.FederatedDataSourceIterator
 
 
 async def train_federated_model(
     *,
-    initialize: tff.Computation,
-    train: tff.Computation,
-    train_data_source: tff.program.FederatedDataSource,
-    evaluation: tff.Computation,
-    evaluation_data_source: tff.program.FederatedDataSource,
+    initialize: federated_language.Computation,
+    train: federated_language.Computation,
+    train_data_source: federated_language.program.FederatedDataSource,
+    evaluation: federated_language.Computation,
+    evaluation_data_source: federated_language.program.FederatedDataSource,
     total_rounds: int,
     num_clients: int,
     train_metrics_manager: Optional[
-        tff.program.ReleaseManager[tff.program.ReleasableStructure, int]
+        federated_language.program.ReleaseManager[
+            federated_language.program.ReleasableStructure, int
+        ]
     ] = None,
     evaluation_metrics_manager: Optional[
-        tff.program.ReleaseManager[tff.program.ReleasableStructure, int]
+        federated_language.program.ReleaseManager[
+            federated_language.program.ReleasableStructure, int
+        ]
     ] = None,
     model_output_manager: Optional[
-        tff.program.ReleaseManager[
-            tff.program.ReleasableStructure, Optional[object]
+        federated_language.program.ReleaseManager[
+            federated_language.program.ReleasableStructure, Optional[object]
         ]
     ] = None,
     program_state_manager: Optional[
-        tff.program.ProgramStateManager[tff.program.ProgramStateStructure]
+        federated_language.program.ProgramStateManager[
+            federated_language.program.ProgramStateStructure
+        ]
     ] = None,
 ) -> None:
   """Trains a federated model for some number of rounds.
@@ -401,27 +448,31 @@ async def train_federated_model(
   Finally, `state` is released to the `model_output_manager`.
 
   Args:
-    initialize: A `tff.Computation` to invoke before training.
-    train: A `tff.Computation` to invoke during training.
-    train_data_source: A `tff.program.FederatedDataSource` which returns client
-      data used during training.
-    evaluation: A `tff.Computation` to invoke to evaluate the model produced
-      after training.
-    evaluation_data_source: A `tff.program.FederatedDataSource` which returns
-      client data used during evaluation.
+    initialize: A `federated_language.Computation` to invoke before training.
+    train: A `federated_language.Computation` to invoke during training.
+    train_data_source: A `federated_language.program.FederatedDataSource` which
+      returns client data used during training.
+    evaluation: A `federated_language.Computation` to invoke to evaluate the
+      model produced after training.
+    evaluation_data_source: A `federated_language.program.FederatedDataSource`
+      which returns client data used during evaluation.
     total_rounds: The number of training rounds to run.
     num_clients: The number of clients for each round of training and for
       evaluation.
-    train_metrics_manager: An optional `tff.program.ReleaseManager` used to
-      release training metrics.
-    evaluation_metrics_manager: An optional `tff.program.ReleaseManager` used to
-      release evaluation metrics.
-    model_output_manager: An optional `tff.program.ReleaseManager` used to
-      release training output.
-    program_state_manager: An optional `tff.program.ProgramStateManager` used to
-      save program state for fault tolerance.
+    train_metrics_manager: An optional
+      `federated_language.program.ReleaseManager` used to release training
+      metrics.
+    evaluation_metrics_manager: An optional
+      `federated_language.program.ReleaseManager` used to release evaluation
+      metrics.
+    model_output_manager: An optional
+      `federated_language.program.ReleaseManager` used to release training
+      output.
+    program_state_manager: An optional
+      `federated_language.program.ProgramStateManager` used to save program
+      state for fault tolerance.
   """
-  tff.program.check_in_federated_context()
+  federated_language.program.check_in_federated_context()
   _check_expected_type_signatures(
       initialize=initialize,
       train=train,
@@ -432,13 +483,14 @@ async def train_federated_model(
 
   # Cast the `program_state_manager` to a more specific type: a manager that
   # loads and saves `_ProgramState`s instead of a manager that loads and saves
-  # `tff.program.ProgramStateStructure`s. This allows the program logic to:
+  # `federated_language.program.ProgramStateStructure`s. This allows the program
+  # logic to:
   # *   Keep `_ProgramState` private.
   # *   Have static typing within the program logic.
   # *   Require callers to provide a `program_state_manager` capable of handling
-  #     any `tff.program.ProgramStateStructure`.
+  #     any `federated_language.program.ProgramStateStructure`.
   program_state_manager = typing.cast(
-      Optional[tff.program.ProgramStateManager[_ProgramState]],
+      Optional[federated_language.program.ProgramStateManager[_ProgramState]],
       program_state_manager,
   )
 
@@ -451,7 +503,7 @@ async def train_federated_model(
   # previous run, this program state can be used to restore the execution of
   # this program logic and skip unnecessary steps.
   if program_state_manager is not None:
-    state = await tff.program.materialize_value(state)
+    state = await federated_language.program.materialize_value(state)
     structure = _ProgramState(
         state=state,
         round_num=0,

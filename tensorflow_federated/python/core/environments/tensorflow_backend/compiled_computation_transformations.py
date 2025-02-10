@@ -15,15 +15,15 @@
 
 import ctypes
 
-from tensorflow_federated.proto.v0 import computation_pb2
+import federated_language
+from federated_language.proto import computation_pb2
+
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core.environments.tensorflow_backend import graph_optimizations
 from tensorflow_federated.python.core.environments.tensorflow_backend import graph_spec
+from tensorflow_federated.python.core.environments.tensorflow_backend import serialization_utils
 from tensorflow_federated.python.core.environments.tensorflow_backend import tensorflow_computation_transformations
-from tensorflow_federated.python.core.impl.compiler import building_blocks
-from tensorflow_federated.python.core.impl.compiler import transformation_utils
-from tensorflow_federated.python.core.impl.utils import tensorflow_utils
-from tensorflow_federated.python.tensorflow_libs import serialization_utils
+from tensorflow_federated.python.core.environments.tensorflow_backend import tensorflow_utils
 
 
 def _unpack_proto_into_graph_spec(tf_block_proto):
@@ -64,8 +64,8 @@ def optimize_tensorflow_comp(tf_computation, config_proto):
   """Applies configured optimizations to the graphdef backing a TF comp.
 
   Args:
-    tf_computation: Instance of `building_blocks.CompiledComputation` backed by
-      TensorFlow.
+    tf_computation: Instance of
+      `federated_language.framework.CompiledComputation` backed by TensorFlow.
     config_proto: Instance of `tf.compat.v1.ConfigProto` specifying the
       optimizations to apply to the graph backing this TensorFlow computation.
 
@@ -74,7 +74,9 @@ def optimize_tensorflow_comp(tf_computation, config_proto):
     `tf.compat.v1.GraphDef` backing it run through Grappler with the specified
     configuration.
   """
-  py_typecheck.check_type(tf_computation, building_blocks.CompiledComputation)
+  py_typecheck.check_type(
+      tf_computation, federated_language.framework.CompiledComputation
+  )
   tf_proto = tf_computation.proto
   graph_spec_obj = _unpack_proto_into_graph_spec(tf_proto)
 
@@ -101,25 +103,24 @@ def optimize_tensorflow_comp(tf_computation, config_proto):
   optimized_proto = computation_pb2.Computation(
       type=tf_proto.type, tensorflow=tf_result_proto
   )
-  return building_blocks.CompiledComputation(
+  return federated_language.framework.CompiledComputation(
       optimized_proto, type_signature=tf_computation.type_signature
   )
 
 
-class TensorFlowOptimizer(transformation_utils.TransformSpec):
-  """Applies TF graph optimizations to `building_blocks.CompiledComputation`s.
+class TensorFlowOptimizer:
+  """Applies TF graph optimizations to `federated_language.framework.CompiledComputation`s.
 
-  This `transformation_utils.TransformSpec` does not alter the TFF structure of
-  the computations on which it is called; rather, it calls out to TensorFlow
-  libraries which perform optimization on the underlying TensorFlow graph
-  representing local processing.
+  This transformer does not alter the TFF structure of the computations on which
+  it is called; rather, it calls out to TensorFlow libraries which perform
+  optimization on the underlying TensorFlow graph representing local processing.
   """
 
   def __init__(self, config_proto):
     self._config_proto = config_proto
 
   def should_transform(self, comp):
-    return isinstance(comp, building_blocks.CompiledComputation)
+    return isinstance(comp, federated_language.framework.CompiledComputation)
 
   def transform(self, comp):
     if not self.should_transform(comp):
@@ -130,36 +131,38 @@ class TensorFlowOptimizer(transformation_utils.TransformSpec):
 def optimize_tensorflow_graphs(comp, grappler_config_proto):
   """Performs any static optimization on TensorFlow subcomputations."""
   transform_spec = TensorFlowOptimizer(grappler_config_proto)
-  return transformation_utils.transform_postorder(
+  return federated_language.framework.transform_postorder(
       comp, transform_spec.transform
   )
 
 
-class DisableCallOpGrappler(transformation_utils.TransformSpec):
-  """Disables grappler in Call ops in `building_blocks.CompiledComputation`s.
+class DisableCallOpGrappler:
+  """Disables grappler in Call ops in `federated_language.framework.CompiledComputation`s.
 
   This overwrites the `config_proto` key of the `NodeDef.attr` field of nodes
   in a `tf.compat.v1.GraphDef` to ensure that Grappler is disabled at runtime.
 
-  This `transformation_utils.TransformSpec` does not alter the TFF structure of
-  the computations on which it is called.
+  This transformer does not alter the TFF structure of the computations on which
+  it is called.
   """
 
   def should_transform(self, comp):
     return (
-        isinstance(comp, building_blocks.CompiledComputation)
+        isinstance(comp, federated_language.framework.CompiledComputation)
         and comp.proto.WhichOneof('computation') == 'tensorflow'
     )
 
   def transform(self, comp):
     if not self.should_transform(comp):
       return comp, False
-    py_typecheck.check_type(comp, building_blocks.CompiledComputation)
+    py_typecheck.check_type(
+        comp, federated_language.framework.CompiledComputation
+    )
     new_comp_proto = tensorflow_computation_transformations.disable_grappler_for_partitioned_calls(
         comp.proto
     )
     return (
-        building_blocks.CompiledComputation(
+        federated_language.framework.CompiledComputation(
             new_comp_proto, type_signature=comp.type_signature
         ),
         True,
@@ -169,12 +172,12 @@ class DisableCallOpGrappler(transformation_utils.TransformSpec):
 def transform_tf_call_ops_to_disable_grappler(comp):
   """Performs grappler disabling on TensorFlow subcomputations."""
   transform_spec = DisableCallOpGrappler()
-  return transformation_utils.transform_postorder(
+  return federated_language.framework.transform_postorder(
       comp, transform_spec.transform
   )
 
 
-class VerifyAllowedOps(transformation_utils.TransformSpec):
+class VerifyAllowedOps:
   """Identity transformation that verifies computation contains only allowed ops.
 
   This tranverses Tensorflow compiled computations and checks each op is
@@ -182,27 +185,29 @@ class VerifyAllowedOps(transformation_utils.TransformSpec):
   `DisallowedOpInTensorFlowComputationError`. Otherwise if only allowed ops are
   found, the original computation is returned.
 
-  This `transformation_utils.TransformSpec` does not alter the TFF structure of
-  the computations on which it is called.
+  This transformer does not alter the TFF structure of the computations on which
+  it is called.
   """
 
   def __init__(self, allowed_op_names: frozenset[str]):
     self._allowed_op_names = allowed_op_names
 
   def should_transform(
-      self, comp: building_blocks.ComputationBuildingBlock
+      self, comp: federated_language.framework.ComputationBuildingBlock
   ) -> bool:
     return (
-        isinstance(comp, building_blocks.CompiledComputation)
+        isinstance(comp, federated_language.framework.CompiledComputation)
         and comp.proto.WhichOneof('computation') == 'tensorflow'
     )
 
   def transform(
-      self, comp: building_blocks.ComputationBuildingBlock
-  ) -> tuple[building_blocks.ComputationBuildingBlock, bool]:
+      self, comp: federated_language.framework.ComputationBuildingBlock
+  ) -> tuple[federated_language.framework.ComputationBuildingBlock, bool]:
     if not self.should_transform(comp):
       return comp, False
-    py_typecheck.check_type(comp, building_blocks.CompiledComputation)
+    py_typecheck.check_type(
+        comp, federated_language.framework.CompiledComputation
+    )
     tensorflow_computation_transformations.check_allowed_ops(
         comp.proto, self._allowed_op_names
     )
@@ -210,17 +215,17 @@ class VerifyAllowedOps(transformation_utils.TransformSpec):
 
 
 def check_allowed_ops(
-    comp: building_blocks.ComputationBuildingBlock,
+    comp: federated_language.framework.ComputationBuildingBlock,
     allowed_op_names: frozenset[str],
-) -> tuple[building_blocks.ComputationBuildingBlock, bool]:
+) -> tuple[federated_language.framework.ComputationBuildingBlock, bool]:
   """Checks any Tensorflow computation contains only allowed ops."""
   transform_spec = VerifyAllowedOps(allowed_op_names)
-  return transformation_utils.transform_postorder(
+  return federated_language.framework.transform_postorder(
       comp, transform_spec.transform
   )
 
 
-class RaiseOnDisallowedOp(transformation_utils.TransformSpec):
+class RaiseOnDisallowedOp:
   """Identity transformation that raises an error if a disallowed op is found.
 
   This tranverses Tensorflow compiled computations searching for ops that have
@@ -228,27 +233,29 @@ class RaiseOnDisallowedOp(transformation_utils.TransformSpec):
   `DisallowedOpInTensorFlowComputationError`. Otherwise if no disallowed ops are
   found, the original computation is returned.
 
-  This `transformation_utils.TransformSpec` does not alter the TFF structure of
-  the computations on which it is called.
+  This transformer does not alter the TFF structure of the computations on which
+  it is called.
   """
 
   def __init__(self, disallowed_op_names: frozenset[str]):
     self._disallowed_op_names = disallowed_op_names
 
   def should_transform(
-      self, comp: building_blocks.ComputationBuildingBlock
+      self, comp: federated_language.framework.ComputationBuildingBlock
   ) -> bool:
     return (
-        isinstance(comp, building_blocks.CompiledComputation)
+        isinstance(comp, federated_language.framework.CompiledComputation)
         and comp.proto.WhichOneof('computation') == 'tensorflow'
     )
 
   def transform(
-      self, comp: building_blocks.ComputationBuildingBlock
-  ) -> tuple[building_blocks.ComputationBuildingBlock, bool]:
+      self, comp: federated_language.framework.ComputationBuildingBlock
+  ) -> tuple[federated_language.framework.ComputationBuildingBlock, bool]:
     if not self.should_transform(comp):
       return comp, False
-    py_typecheck.check_type(comp, building_blocks.CompiledComputation)
+    py_typecheck.check_type(
+        comp, federated_language.framework.CompiledComputation
+    )
     tensorflow_computation_transformations.check_no_disallowed_ops(
         comp.proto, self._disallowed_op_names
     )
@@ -256,37 +263,40 @@ class RaiseOnDisallowedOp(transformation_utils.TransformSpec):
 
 
 def check_disallowed_ops(
-    comp: building_blocks.ComputationBuildingBlock,
+    comp: federated_language.framework.ComputationBuildingBlock,
     disallowed_op_names: frozenset[str],
-) -> tuple[building_blocks.ComputationBuildingBlock, bool]:
+) -> tuple[federated_language.framework.ComputationBuildingBlock, bool]:
   """Raises error on disallowed ops in any Tensorflow computation."""
   transform_spec = RaiseOnDisallowedOp(disallowed_op_names)
-  return transformation_utils.transform_postorder(
+  return federated_language.framework.transform_postorder(
       comp, transform_spec.transform
   )
 
 
-class AddUniqueIDs(transformation_utils.TransformSpec):
+class AddUniqueIDs:
   """Populates unique IDs for compiled computations.
 
   This overwrites the `tensorlfow.id` field (and in the future other compiled
   computations) with a unique ID. The IDs produced should be determinstic and
   reproducible when the transform is applied to the same computation.
 
-  This `transformation_utils.TransformSpec` does not alter the TFF structure of
-  the computations on which it is called.
+  This transformer does not alter the TFF structure of the computations on which
+  it is called.
   """
 
   def should_transform(self, comp):
     return (
-        isinstance(comp, building_blocks.CompiledComputation)
+        isinstance(comp, federated_language.framework.CompiledComputation)
         and comp.proto.WhichOneof('computation') == 'tensorflow'
     )
 
   def transform(self, comp):
+    """Transforms `comp`."""
     if not self.should_transform(comp):
       return comp, False
-    py_typecheck.check_type(comp, building_blocks.CompiledComputation)
+    py_typecheck.check_type(
+        comp, federated_language.framework.CompiledComputation
+    )
     new_tf_proto = computation_pb2.TensorFlow()
     new_tf_proto.CopyFrom(comp.proto.tensorflow)
     # Important: we must also serialize the type_signature because TFF might
@@ -302,7 +312,7 @@ class AddUniqueIDs(transformation_utils.TransformSpec):
         type=comp.proto.type, tensorflow=new_tf_proto
     )
     return (
-        building_blocks.CompiledComputation(
+        federated_language.framework.CompiledComputation(
             new_comp_proto, type_signature=comp.type_signature
         ),
         True,
@@ -312,6 +322,6 @@ class AddUniqueIDs(transformation_utils.TransformSpec):
 def transform_tf_add_ids(comp):
   """Adds unique IDs to each TensorFlow subcomputations."""
   transform_spec = AddUniqueIDs()
-  return transformation_utils.transform_postorder(
+  return federated_language.framework.transform_postorder(
       comp, transform_spec.transform
   )

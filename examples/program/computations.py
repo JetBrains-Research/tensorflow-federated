@@ -18,6 +18,7 @@ These computations compute the sum of the integer data accross all clients.
 
 import collections
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 import tensorflow_federated as tff
@@ -25,13 +26,13 @@ import tensorflow_federated as tff
 METRICS_TOTAL_SUM = 'total_sum'
 
 
-@tff.federated_computation()
+@federated_language.federated_computation()
 def initialize():
   """Returns the initial state."""
-  return tff.federated_value(0, tff.SERVER)
+  return federated_language.federated_value(0, federated_language.SERVER)
 
 
-@tff.tensorflow.computation(tff.SequenceType(np.int32))
+@tff.tensorflow.computation(federated_language.SequenceType(np.int32))
 def _sum_dataset(dataset: tf.data.Dataset) -> int:
   """Returns the sum of all the integers in `dataset`."""
   return dataset.reduce(tf.cast(0, tf.int32), tf.add)
@@ -43,9 +44,11 @@ def _sum_integers(x: int, y: int) -> int:
   return x + y
 
 
-@tff.federated_computation(
-    tff.FederatedType(np.int32, tff.SERVER),
-    tff.FederatedType(tff.SequenceType(np.int32), tff.CLIENTS),
+@federated_language.federated_computation(
+    federated_language.FederatedType(np.int32, federated_language.SERVER),
+    federated_language.FederatedType(
+        federated_language.SequenceType(np.int32), federated_language.CLIENTS
+    ),
 )
 def train(server_state: int, client_data: tf.data.Dataset):
   """Computes the sum of all the integers on the clients.
@@ -63,21 +66,25 @@ def train(server_state: int, client_data: tf.data.Dataset):
   Returns:
     A tuple of the updated server state and the train metrics.
   """
-  client_sums = tff.federated_map(_sum_dataset, client_data)
-  total_sum = tff.federated_sum(client_sums)
-  updated_state = tff.federated_map(_sum_integers, (server_state, total_sum))
+  client_sums = federated_language.federated_map(_sum_dataset, client_data)
+  total_sum = federated_language.federated_sum(client_sums)
+  updated_state = federated_language.federated_map(
+      _sum_integers, (server_state, total_sum)
+  )
   metrics = collections.OrderedDict(
       [
           (METRICS_TOTAL_SUM, total_sum),
       ]
   )
-  metrics = tff.federated_zip(metrics)
+  metrics = federated_language.federated_zip(metrics)
   return updated_state, metrics
 
 
-@tff.federated_computation(
-    tff.FederatedType(np.int32, tff.SERVER),
-    tff.FederatedType(tff.SequenceType(np.int32), tff.CLIENTS),
+@federated_language.federated_computation(
+    federated_language.FederatedType(np.int32, federated_language.SERVER),
+    federated_language.FederatedType(
+        federated_language.SequenceType(np.int32), federated_language.CLIENTS
+    ),
 )
 def evaluation(server_state: int, client_data: tf.data.Dataset):
   """Computes the sum of all the integers on the clients.
@@ -96,12 +103,12 @@ def evaluation(server_state: int, client_data: tf.data.Dataset):
     The evaluation metrics.
   """
   del server_state  # Unused.
-  client_sums = tff.federated_map(_sum_dataset, client_data)
-  total_sum = tff.federated_sum(client_sums)
+  client_sums = federated_language.federated_map(_sum_dataset, client_data)
+  total_sum = federated_language.federated_sum(client_sums)
   metrics = collections.OrderedDict(
       [
           (METRICS_TOTAL_SUM, total_sum),
       ]
   )
-  metrics = tff.federated_zip(metrics)
+  metrics = federated_language.federated_zip(metrics)
   return metrics

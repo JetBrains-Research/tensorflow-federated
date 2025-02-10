@@ -25,7 +25,8 @@ py_library(
         ":variable",
         "//tensorflow_federated/python/common_libs:py_typecheck",
         "//tensorflow_federated/python/common_libs:structure",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
+        "//tensorflow_federated/python/core/environments/tensorflow_frontend:tensorflow_types",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -64,11 +65,9 @@ py_test(
         ":variable",
         "//tensorflow_federated/python/core/backends/native:execution_contexts",
         "//tensorflow_federated/python/core/environments/tensorflow_frontend:variable_utils",
-        "//tensorflow_federated/python/core/impl/federated_context:federated_computation",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-        "//tensorflow_federated/python/core/impl/types:placements",
         "//tensorflow_federated/python/learning/metrics:aggregator",
         "//tensorflow_federated/python/learning/metrics:types",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -78,13 +77,11 @@ py_library(
     deps = [
         ":variable",
         "//tensorflow_federated/python/common_libs:py_typecheck",
+        "//tensorflow_federated/python/core/environments/tensorflow_backend:type_conversions",
         "//tensorflow_federated/python/core/environments/tensorflow_frontend:tensorflow_computation",
-        "//tensorflow_federated/python/core/impl/federated_context:intrinsics",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-        "//tensorflow_federated/python/core/impl/types:type_analysis",
-        "//tensorflow_federated/python/core/impl/types:type_conversions",
         "//tensorflow_federated/python/learning/metrics:counters",
         "//tensorflow_federated/python/learning/metrics:keras_finalizer",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -99,12 +96,10 @@ py_test(
         ":variable",
         "//tensorflow_federated/python/core/backends/native:execution_contexts",
         "//tensorflow_federated/python/core/environments/tensorflow_frontend:tensorflow_computation",
-        "//tensorflow_federated/python/core/impl/computation:computation_base",
-        "//tensorflow_federated/python/core/impl/federated_context:federated_computation",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-        "//tensorflow_federated/python/core/impl/types:placements",
+        "//tensorflow_federated/python/core/environments/tensorflow_frontend:tensorflow_types",
         "//tensorflow_federated/python/learning/metrics:aggregator",
         "//tensorflow_federated/python/learning/metrics:counters",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -131,15 +126,13 @@ py_library(
     deps = [
         ":functional",
         ":variable",
-        "//tensorflow_federated/proto/v0:computation_py_pb2",
         "//tensorflow_federated/python/common_libs:py_typecheck",
         "//tensorflow_federated/python/common_libs:structure",
+        "//tensorflow_federated/python/core/environments/tensorflow_backend:type_conversions",
         "//tensorflow_federated/python/core/environments/tensorflow_frontend:tensorflow_computation",
-        "//tensorflow_federated/python/core/impl/computation:computation_impl",
-        "//tensorflow_federated/python/core/impl/context_stack:context_stack_impl",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-        "//tensorflow_federated/python/core/impl/types:type_conversions",
-        "//tensorflow_federated/python/core/impl/types:type_serialization",
+        "//tensorflow_federated/python/core/environments/tensorflow_frontend:tensorflow_types",
+        "@federated_language//federated_language",
+        "@federated_language//federated_language/proto:computation_py_pb2",
     ],
 )
 
@@ -150,7 +143,7 @@ py_test(
         ":model_weights",
         ":variable",
         "//tensorflow_federated/python/common_libs:structure",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -160,7 +153,8 @@ py_library(
     deps = [
         ":model_weights",
         ":variable",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
+        "//tensorflow_federated/python/core/environments/tensorflow_frontend:tensorflow_types",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -170,7 +164,7 @@ py_test(
     deps = [
         ":model_weights",
         ":reconstruction_model",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -186,8 +180,7 @@ py_test(
         ":variable",
         "//tensorflow_federated/python/core/backends/native:execution_contexts",
         "//tensorflow_federated/python/core/environments/tensorflow_frontend:tensorflow_computation",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-        "//tensorflow_federated/python/core/impl/types:type_serialization",
+        "@federated_language//federated_language",
     ],
 )
 

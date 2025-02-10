@@ -34,6 +34,7 @@ limitations under the License
 #include "include/grpcpp/impl/channel_interface.h"
 #include "include/grpcpp/security/credentials.h"
 #include "include/grpcpp/support/channel_arguments.h"
+#include "federated_language/proto/computation.pb.h"
 #include "include/pybind11/cast.h"
 #include "include/pybind11/detail/common.h"
 #include "include/pybind11/pybind11.h"
@@ -46,7 +47,6 @@ limitations under the License
 #include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
@@ -61,7 +61,6 @@ limitations under the License
 #include "tensorflow_federated/cc/core/impl/executors/streaming_remote_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/tensorflow_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/xla_executor.h"
-#include "tensorflow_federated/proto/v0/computation.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace tensorflow {
@@ -209,7 +208,7 @@ struct type_caster<tensorflow::Tensor> {
   bool load(handle src, bool) {
     {
       tensorflow::Safe_TF_TensorPtr tf_tensor_ptr;
-      tensorflow::Status status = tensorflow::NdarrayToTensor(
+      absl::Status status = tensorflow::NdarrayToTensor(
           /*ctx=*/nullptr, src.ptr(), &tf_tensor_ptr);
       if (!status.ok()) {
         LOG(ERROR) << status;
@@ -229,7 +228,7 @@ struct type_caster<tensorflow::Tensor> {
   static handle cast(const tensorflow::Tensor tensor, return_value_policy,
                      handle) {
     PyObject* result = nullptr;
-    tensorflow::Status status = tensorflow::TensorToNdarray(tensor, &result);
+    absl::Status status = tensorflow::TensorToNdarray(tensor, &result);
     if (!status.ok()) {
       PyErr_SetString(PyExc_ValueError, "Failed to create np.ndarray");
       return nullptr;

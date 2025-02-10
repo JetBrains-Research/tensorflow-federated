@@ -21,12 +21,11 @@
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "absl/container/fixed_array.h"
-#include "absl/container/node_hash_map.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_set.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/input_tensor_list.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
@@ -41,21 +40,9 @@ namespace aggregation {
 // CompositeKey holds a representation of items of potentially different data
 // types, which when combined form a key that should be used for grouping.
 //
-// Composite keys are stored in a FixedArray of uint64_t. Each element in the
-// array is a single element of the composite key. These elements can be of
-// different types, but the CompositeKeyCombiner will only produce composite
-// keys including types that it can represent as a uint64_t.
-//
-// Using a FixedArray rather than a string for allocating the data buffer used
-// to store the composite key ensures that the pointers to elements in the
-// composite key are properly aligned for storing items of `sizeof(uint64_t)`
-// bytes.
-using CompositeKey = absl::FixedArray<uint64_t>;
-
-// CompositeKeyOrderedVector is a vector of pointers to the data in the unique
-// CompositeKeys that are created by the CompositeKeyCombiner. The pointers are
-// ordered by the ordinal assigned to the composite key.
-using CompositeKeyOrderedVector = std::vector<const uint64_t*>;
+// Composite keys are stored as packed bytes - 4 or 8 bytes per key depending
+// on the data type of each key.
+using CompositeKey = std::string;
 
 // Class operating on sets of tensors of the same shape to combine indices for
 // which the same combination of elements occurs, or in other words, indices
@@ -140,41 +127,40 @@ class CompositeKeyCombiner {
   // DPCompositeKeyCombiner::AccumulateWithBound.
   std::unique_ptr<MutableVectorData<int64_t>> CreateOrdinals(
       const InputTensorList& tensors, size_t num_elements,
-      absl::node_hash_map<CompositeKey, int64_t>& composite_key_map,
-      int64_t& current_ordinal, CompositeKeyOrderedVector& ordered_keys);
+      absl::flat_hash_map<CompositeKey, int64_t>& composite_key_map,
+      int64_t& current_ordinal);
 
   // Checks that the provided InputTensorList can be accumulated into this
   // CompositeKeyCombiner.
   StatusOr<TensorShape> CheckValidAndGetShape(const InputTensorList& tensors);
 
   // Functions to grant access to members
-  inline absl::node_hash_map<CompositeKey, int64_t>& GetCompositeKeys() {
+  inline absl::flat_hash_map<CompositeKey, int64_t>& GetCompositeKeys() {
     return composite_keys_;
   }
   inline int64_t& GetCompositeKeyNext() { return composite_key_next_; }
-  inline CompositeKeyOrderedVector& GetKeyVec() { return ordered_keys_; }
-  inline std::unordered_set<std::string>& GetInternPool() {
+  inline absl::node_hash_set<std::string>& GetInternPool() {
     return intern_pool_;
+  }
+  // Creates a new composite key.
+  inline CompositeKey NewCompositeKey() {
+    return CompositeKey(composite_key_size_, 0);
   }
 
  private:
   // The data types of the tensors in valid inputs to Accumulate, in this exact
   // order.
-  // TODO: b/277982238 - Use inlined vector to store the DataTypes instead.
   std::vector<DataType> dtypes_;
-  // Pointers to the byte representations of the composite keys in the order
-  // they will appear in the output tensors returned by GetOutputKeys.
-  std::vector<const uint64_t*> ordered_keys_;
+  // The size of the composite key in bytes.
+  size_t composite_key_size_;
   // Set of unique strings encountered in tensors of type DT_STRING on calls to
   // Accumulate.
   // Used as an optimization to avoid storing the same string multiple
   // times even if it appears in many composite keys.
-  // TODO: b/277982238 - Intern directly into the output tensor instead to avoid
-  // copies when creating the output tensors.
-  std::unordered_set<std::string> intern_pool_;
+  absl::node_hash_set<std::string> intern_pool_;
   // Mapping of byte representations of the composite keys seen so far to
   // their ordinal position in the output tensors returned by GetOutputKeys.
-  absl::node_hash_map<CompositeKey, int64_t> composite_keys_;
+  absl::flat_hash_map<CompositeKey, int64_t> composite_keys_;
   // Number of unique composite keys encountered so far across all calls to
   // Accumulate.
   int64_t composite_key_next_ = 0;
@@ -187,17 +173,14 @@ class CompositeKeyCombiner {
 // mapped to.
 inline int64_t SaveCompositeKeyAndGetOrdinal(
     CompositeKey&& composite_key,
-    absl::node_hash_map<CompositeKey, int64_t>& composite_key_map,
-    int64_t& current_ordinal, CompositeKeyOrderedVector& ordered_keys) {
+    absl::flat_hash_map<CompositeKey, int64_t>& composite_key_map,
+    int64_t& current_ordinal) {
   auto [it, inserted] =
       composite_key_map.insert({std::move(composite_key), current_ordinal});
   if (inserted) {
     // This is the first time this CompositeKeyCombiner has encountered this
     // particular composite key.
     current_ordinal++;
-    // Save the pointer to the composite key data in the dedicated vector so we
-    // can recover it when GetOutputKeys is called.
-    ordered_keys.push_back(it->first.data());
   }
   // return the ordinal associated with the composite key
   return it->second;

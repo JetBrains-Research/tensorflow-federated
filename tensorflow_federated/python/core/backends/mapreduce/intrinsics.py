@@ -13,82 +13,72 @@
 # limitations under the License.
 """Intrinsics for the mapreduce backend."""
 
+import federated_language
 import tensorflow as tf
 
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.common_libs import structure
 from tensorflow_federated.python.core.environments.tensorflow_backend import tensorflow_computation_factory
-from tensorflow_federated.python.core.impl.compiler import building_block_factory
-from tensorflow_federated.python.core.impl.compiler import building_blocks
-from tensorflow_federated.python.core.impl.compiler import intrinsic_defs
-from tensorflow_federated.python.core.impl.context_stack import context_base
-from tensorflow_federated.python.core.impl.context_stack import context_stack_impl
-from tensorflow_federated.python.core.impl.context_stack import symbol_binding_context
-from tensorflow_federated.python.core.impl.federated_context import value_impl
-from tensorflow_federated.python.core.impl.federated_context import value_utils
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
-from tensorflow_federated.python.core.impl.types import type_analysis
-from tensorflow_federated.python.core.impl.types import type_conversions
 
 
 # Computes the modular sum of client values on the server, securely. Only
 # supported for integers or nested structures of integers.
 #
 # Type signature: <{V}@CLIENTS,M> -> V@SERVER
-FEDERATED_SECURE_MODULAR_SUM = intrinsic_defs.IntrinsicDef(
+FEDERATED_SECURE_MODULAR_SUM = federated_language.framework.IntrinsicDef(
     'FEDERATED_SECURE_MODULAR_SUM',
     'federated_secure_modular_sum',
-    computation_types.FunctionType(
+    federated_language.FunctionType(
         parameter=[
-            computation_types.FederatedType(
-                computation_types.AbstractType('V'), placements.CLIENTS
+            federated_language.FederatedType(
+                federated_language.AbstractType('V'), federated_language.CLIENTS
             ),
-            computation_types.AbstractType('M'),
+            federated_language.AbstractType('M'),
         ],
-        result=computation_types.FederatedType(
-            computation_types.AbstractType('V'), placements.SERVER
+        result=federated_language.FederatedType(
+            federated_language.AbstractType('V'), federated_language.SERVER
         ),
     ),
-    aggregation_kind=intrinsic_defs.AggregationKind.SECURE,
+    aggregation_kind=federated_language.framework.AggregationKind.SECURE,
 )
 
 
 def _cast(
-    comp: building_blocks.ComputationBuildingBlock,
-    type_signature: computation_types.TensorType,
-) -> building_blocks.Call:
+    comp: federated_language.framework.ComputationBuildingBlock,
+    type_signature: federated_language.TensorType,
+) -> federated_language.framework.Call:
   """Casts `comp` to the provided type."""
 
   def cast_fn(value):
 
-    def cast_element(element, type_signature: computation_types.TensorType):
+    def cast_element(element, type_signature: federated_language.TensorType):
       return tf.cast(element, type_signature.dtype)
 
-    if isinstance(comp.type_signature, computation_types.StructType):
+    if isinstance(comp.type_signature, federated_language.StructType):
       return structure.map_structure(cast_element, value, type_signature)
     return cast_element(value, type_signature)
 
   cast_proto, cast_type = tensorflow_computation_factory.create_unary_operator(
       cast_fn, comp.type_signature
   )
-  cast_comp = building_blocks.CompiledComputation(
+  cast_comp = federated_language.framework.CompiledComputation(
       cast_proto, type_signature=cast_type
   )
-  return building_blocks.Call(cast_comp, comp)
+  return federated_language.framework.Call(cast_comp, comp)
 
 
 def create_federated_secure_modular_sum(
-    value: building_blocks.ComputationBuildingBlock,
-    modulus: building_blocks.ComputationBuildingBlock,
+    value: federated_language.framework.ComputationBuildingBlock,
+    modulus: federated_language.framework.ComputationBuildingBlock,
     preapply_modulus: bool = True,
-) -> building_blocks.ComputationBuildingBlock:
+) -> federated_language.framework.ComputationBuildingBlock:
   r"""Creates a called secure modular sum.
 
   Args:
-    value: A `building_blocks.ComputationBuildingBlock` to use as the value.
-    modulus: A `building_blocks.ComputationBuildingBlock` to use as the
-      `modulus` value.
+    value: A `federated_language.framework.ComputationBuildingBlock` to use as
+      the value.
+    modulus: A `federated_language.framework.ComputationBuildingBlock` to use as
+      the `modulus` value.
     preapply_modulus: Whether or not to preapply `modulus` to the input `value`.
       This can be `False` if `value` is guaranteed to already be in range.
 
@@ -98,29 +88,43 @@ def create_federated_secure_modular_sum(
   Raises:
     TypeError: If any of the types do not match.
   """
-  py_typecheck.check_type(value, building_blocks.ComputationBuildingBlock)
-  py_typecheck.check_type(modulus, building_blocks.ComputationBuildingBlock)
-  result_type = computation_types.FederatedType(
+  py_typecheck.check_type(
+      value, federated_language.framework.ComputationBuildingBlock
+  )
+  py_typecheck.check_type(
+      modulus, federated_language.framework.ComputationBuildingBlock
+  )
+
+  if not isinstance(value.type_signature, federated_language.FederatedType):
+    raise ValueError(
+        'Expected `value.type_signature` to be a'
+        f' `federated_language.FederatedType`, found {value.type_signature}'
+    )
+  value_type = federated_language.FederatedType(
+      value.type_signature.member,
+      value.type_signature.placement,
+      all_equal=False,
+  )
+
+  result_type = federated_language.FederatedType(
       value.type_signature.member,  # pytype: disable=attribute-error
-      placements.SERVER,
+      federated_language.SERVER,
   )
-  intrinsic_type = computation_types.FunctionType(
-      [
-          type_conversions.type_to_non_all_equal(value.type_signature),
-          modulus.type_signature,
-      ],
-      result_type,
+  intrinsic_type = federated_language.FunctionType(
+      [value_type, modulus.type_signature], result_type
   )
-  intrinsic = building_blocks.Intrinsic(
+  intrinsic = federated_language.framework.Intrinsic(
       FEDERATED_SECURE_MODULAR_SUM.uri, intrinsic_type
   )
 
   if not preapply_modulus:
-    values = building_blocks.Struct([value, modulus])
-    return building_blocks.Call(intrinsic, values)
+    values = federated_language.framework.Struct([value, modulus])
+    return federated_language.framework.Call(intrinsic, values)
 
   # Pre-insert a modulus to ensure the the input values are within range.
-  mod_ref = building_blocks.Reference('mod', modulus.type_signature)
+  mod_ref = federated_language.framework.Reference(
+      'mod', modulus.type_signature
+  )
 
   # In order to run `tf.math.floormod`, our modulus and value must be the same
   # type.
@@ -132,13 +136,13 @@ def create_federated_secure_modular_sum(
   # at the client as well as at the server for aggregation, we need to broadcast
   # the modulus to be able to avoid repeating the modulus value (which could
   # cause accuracy issues if the modulus is non-deterministic).
-  casted_mod_at_server = building_block_factory.create_federated_value(
-      casted_mod, placements.SERVER
+  casted_mod_at_server = federated_language.framework.create_federated_value(
+      casted_mod, federated_language.SERVER
   )
-  value_with_mod = building_block_factory.create_federated_zip(
-      building_blocks.Struct([
+  value_with_mod = federated_language.framework.create_federated_zip(
+      federated_language.framework.Struct([
           value,
-          building_block_factory.create_federated_broadcast(
+          federated_language.framework.create_federated_broadcast(
               casted_mod_at_server
           ),
       ])
@@ -154,32 +158,32 @@ def create_federated_secure_modular_sum(
           casted_mod.type_signature,
       )
   )
-  structural_modulus_tf = building_blocks.CompiledComputation(
+  structural_modulus_tf = federated_language.framework.CompiledComputation(
       structural_modulus_proto, type_signature=structural_modulus_type
   )
-  value_modded = building_block_factory.create_federated_map_or_apply(
+  value_modded = federated_language.framework.create_federated_map_or_apply(
       structural_modulus_tf, value_with_mod
   )
-  values = building_blocks.Struct([value_modded, mod_ref])
-  return building_blocks.Block(
-      [('mod', modulus)], building_blocks.Call(intrinsic, values)
+  values = federated_language.framework.Struct([value_modded, mod_ref])
+  return federated_language.framework.Block(
+      [('mod', modulus)], federated_language.framework.Call(intrinsic, values)
   )
 
 
 def create_null_federated_secure_modular_sum():
   return create_federated_secure_modular_sum(
-      building_block_factory.create_federated_value(
-          building_blocks.Struct([]), placements.CLIENTS
+      federated_language.framework.create_federated_value(
+          federated_language.framework.Struct([]), federated_language.CLIENTS
       ),
-      building_blocks.Struct([]),
+      federated_language.framework.Struct([]),
       preapply_modulus=False,
   )
 
 
 def _bind_comp_as_reference(comp):
-  context = context_stack_impl.context_stack.current
-  if not isinstance(context, symbol_binding_context.SymbolBindingContext):
-    raise context_base.ContextError(
+  context = federated_language.framework.get_context_stack().current
+  if not isinstance(context, federated_language.framework.SymbolBindingContext):
+    raise federated_language.framework.ContextError(
         f'Attempted to construct an intrinsic in context {context} which '
         ' does not support binding references.'
     )
@@ -187,7 +191,7 @@ def _bind_comp_as_reference(comp):
 
 
 def federated_secure_modular_sum(value, modulus):
-  """Computes a modular sum at `tff.SERVER` of a `value` from `tff.CLIENTS`.
+  """Computes a modular sum at `federated_language.SERVER` of a `value` from `federated_language.CLIENTS`.
 
   This function computes a sum such that it should not be possible for the
   server to learn any clients individual value. The specific algorithm and
@@ -207,11 +211,11 @@ def federated_secure_modular_sum(value, modulus):
   Example:
 
   ```python
-  value = tff.federated_value(5, tff.CLIENTS)
+  value = federated_language.federated_value(5, federated_language.CLIENTS)
   result = tff.backends.mapreduce.federated_secure_modular_sum(value, 3)
   # `result == (5 * num_clients % 3)@SERVER`
 
-  value = tff.federated_value((3, 9), tff.CLIENTS)
+  value = federated_language.federated_value((3, 9), federated_language.CLIENTS)
   result = tff.backends.mapreduce.federated_secure_modular_sum(
       value, (100, 200))
   # `result == (3 * num_clients % 100, 9 * num_clients % 100)@SERVER`
@@ -221,32 +225,35 @@ def federated_secure_modular_sum(value, modulus):
   weaker privacy properties, consider using `federated_sum`.
 
   Args:
-    value: An integer or nested structure of integers placed at `tff.CLIENTS`.
-      Values outside of the range [0, modulus-1] will be considered equivalent
-      to mod(value, modulus), i.e. they will be projected into the range [0,
-      modulus-1] as part of the modular summation.
+    value: An integer or nested structure of integers placed at
+      `federated_language.CLIENTS`. Values outside of the range [0, modulus-1]
+      will be considered equivalent to mod(value, modulus), i.e. they will be
+      projected into the range [0, modulus-1] as part of the modular summation.
     modulus: A Python integer or nested structure of integers matching the
       structure of `value`. If integer `modulus` is used with a nested `value`,
       the same integer is used for each tensor in `value`.
 
   Returns:
     A representation of the modular sum of the member constituents of `value`
-    placed on the `tff.SERVER`.  The resulting modular sum will be on the range
+    placed on the `federated_language.SERVER`.  The resulting modular sum will
+    be on the range
     [0, modulus-1].
 
   Raises:
     TypeError: If the argument is not a federated TFF value placed at
-      `tff.CLIENTS`.
+      `federated_language.CLIENTS`.
   """
-  value = value_impl.to_value(value, type_spec=None)
-  value = value_utils.ensure_federated_value(
-      value, placements.CLIENTS, 'value to be summed'
+  value = federated_language.to_value(value, type_spec=None)
+  value = federated_language.framework.ensure_federated_value(
+      value, federated_language.CLIENTS, 'value to be summed'
   )
-  type_analysis.check_is_structure_of_integers(value.type_signature)
-  modulus_value = value_impl.to_value(modulus, type_spec=None)
+  federated_language.framework.check_is_structure_of_integers(
+      value.type_signature
+  )
+  modulus_value = federated_language.to_value(modulus, type_spec=None)
   value_member_type = value.type_signature.member  # pytype: disable=attribute-error
   modulus_type = modulus_value.type_signature
-  if not type_analysis.is_single_integer_or_matches_structure(
+  if not federated_language.framework.is_single_integer_or_matches_structure(
       modulus_type, value_member_type
   ):
     raise TypeError(
@@ -256,13 +263,13 @@ def federated_secure_modular_sum(value, modulus):
             value_member_type, modulus_type
         )
     )
-  if isinstance(modulus_type, computation_types.TensorType) and isinstance(
-      value_member_type, computation_types.StructType
+  if isinstance(modulus_type, federated_language.TensorType) and isinstance(
+      value_member_type, federated_language.StructType
   ):
-    modulus_value = value_impl.to_value(
+    modulus_value = federated_language.to_value(
         structure.map_structure(lambda _: modulus, value_member_type),
         type_spec=None,
     )
   comp = create_federated_secure_modular_sum(value.comp, modulus_value.comp)
   comp = _bind_comp_as_reference(comp)
-  return value_impl.Value(comp)
+  return federated_language.Value(comp)

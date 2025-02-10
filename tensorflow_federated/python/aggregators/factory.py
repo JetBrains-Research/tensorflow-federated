@@ -16,10 +16,11 @@
 import abc
 from typing import Union
 
-from tensorflow_federated.python.core.impl.types import computation_types
+import federated_language
+
 from tensorflow_federated.python.core.templates import aggregation_process
 
-ValueType = Union[computation_types.TensorType, computation_types.StructType]
+ValueType = Union[federated_language.TensorType, federated_language.StructType]
 
 
 class UnweightedAggregationFactory(abc.ABC):
@@ -31,17 +32,19 @@ class UnweightedAggregationFactory(abc.ABC):
   ) -> aggregation_process.AggregationProcess:
     """Creates a `tff.aggregators.AggregationProcess` without weights.
 
-    The provided `value_type` is a non-federated `tff.Type`, that is, not a
-    `tff.FederatedType`.
+    The provided `value_type` is a non-federated `federated_language.Type`, that
+    is, not a
+    `federated_language.FederatedType`.
 
     The returned `tff.aggregators.AggregationProcess` will be created for
-    aggregation of values matching `value_type` placed at `tff.CLIENTS`.
+    aggregation of values matching `value_type` placed at
+    `federated_language.CLIENTS`.
     That is, its `next` method will expect type
     `<S@SERVER, {value_type}@CLIENTS>`, where `S` is the unplaced return type of
     its `initialize` method.
 
     Args:
-      value_type: A non-federated `tff.Type`.
+      value_type: A non-federated `federated_language.Type`.
 
     Returns:
       A `tff.templates.AggregationProcess`.
@@ -58,18 +61,20 @@ class WeightedAggregationFactory(abc.ABC):
   ) -> aggregation_process.AggregationProcess:
     """Creates a `tff.aggregators.AggregationProcess` with weights.
 
-    The provided `value_type` and `weight_type` are non-federated `tff.Type`s.
-    That is, neither is a `tff.FederatedType`.
+    The provided `value_type` and `weight_type` are non-federated
+    `federated_language.Type`s.
+    That is, neither is a `federated_language.FederatedType`.
 
     The returned `tff.aggregators.AggregationProcess` will be created
     for aggregation of pairs of values matching `value_type` and `weight_type`
-    placed at `tff.CLIENTS`. That is, its `next` method will expect type
+    placed at `federated_language.CLIENTS`. That is, its `next` method will
+    expect type
     `<S@SERVER, {value_type}@CLIENTS, {weight_type}@CLIENTS>`, where `S` is the
     unplaced return type of its `initialize` method.
 
     Args:
-      value_type: A non-federated `tff.Type`.
-      weight_type: A non-federated `tff.Type`.
+      value_type: A non-federated `federated_language.Type`.
+      weight_type: A non-federated `federated_language.Type`.
 
     Returns:
       A `tff.templates.AggregationProcess`.

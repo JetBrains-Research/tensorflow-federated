@@ -67,16 +67,12 @@ import typing
 from typing import Any, Optional
 
 from absl import logging as _logging
+import federated_language
 import numpy as np
 
 from tensorflow_federated.python.learning.models import model_weights as model_weights_lib
 from tensorflow_federated.python.learning.templates import learning_process
-from tensorflow_federated.python.program import data_source as data_source_lib
-from tensorflow_federated.python.program import federated_context
 from tensorflow_federated.python.program import file_program_state_manager
-from tensorflow_federated.python.program import program_state_manager
-from tensorflow_federated.python.program import release_manager
-from tensorflow_federated.python.program import value_reference
 
 # The prefix path for metrics exported to TensorBoard. This will group all the
 # metrics under tab with the same name.
@@ -123,8 +119,8 @@ class AutoVersionAdvanceingStateManager:
     self._lock = asyncio.Lock()  # Lock for concurrency safety.
 
   async def load_latest(
-      self, structure: program_state_manager.ProgramStateStructure
-  ) -> program_state_manager.ProgramStateStructure:
+      self, structure: federated_language.program.ProgramStateStructure
+  ) -> federated_language.program.ProgramStateStructure:
     """Returns the latest program state.
 
     Args:
@@ -139,12 +135,13 @@ class AutoVersionAdvanceingStateManager:
 
   async def save(
       self,
-      program_state: program_state_manager.ProgramStateStructure,
+      program_state: federated_language.program.ProgramStateStructure,
   ) -> None:
     """Saves `program_state` and automatically advances the version number.
 
     Args:
-      program_state: A `tff.program.ProgramStateStructure` to save.
+      program_state: A `federated_language.program.ProgramStateStructure` to
+        save.
     """
     async with self._lock:
       await self._state_manager.save(program_state, version=self._next_version)
@@ -165,7 +162,9 @@ class EvaluationManager:
   3.  If the program has restarted, load the most recent state of in-progress
       evaluations and restart each of the evaluations.
 
-  This class uses N + 1 `tff.program.ProgramStateManagers` to enable resumable
+  This class uses N + 1 `federated_language.program.ProgramStateManagers` to
+  enable
+  resumable
   evaluations.
 
   *   The first state managers is for this class itself, and manages the list of
@@ -182,10 +181,10 @@ class EvaluationManager:
 
   def __init__(
       self,
-      data_source: data_source_lib.FederatedDataSource,
+      data_source: federated_language.program.FederatedDataSource,
       aggregated_metrics_manager: Optional[
-          release_manager.ReleaseManager[
-              release_manager.ReleasableStructure, int
+          federated_language.program.ReleaseManager[
+              federated_language.program.ReleasableStructure, int
           ]
       ],
       create_state_manager_fn: Callable[
@@ -196,8 +195,8 @@ class EvaluationManager:
           tuple[
               learning_process.LearningProcess,
               Optional[
-                  release_manager.ReleaseManager[
-                      release_manager.ReleasableStructure, int
+                  federated_language.program.ReleaseManager[
+                      federated_language.program.ReleasableStructure, int
                   ]
               ],
           ],
@@ -208,18 +207,19 @@ class EvaluationManager:
     """Creates an EvaluationManager.
 
     Args:
-      data_source: A `tff.program.FederatedDataSource` that the manager will use
-        to create iterators for evaluation loops.
-      aggregated_metrics_manager: A `tff.program.ReleaseManager` for releasing
-        the total aggregated metrics at the end of the evaluation loop.
+      data_source: A `federated_language.program.FederatedDataSource` that the
+        manager will use to create iterators for evaluation loops.
+      aggregated_metrics_manager: A `federated_language.program.ReleaseManager`
+        for releasing the total aggregated metrics at the end of the evaluation
+        loop.
       create_state_manager_fn: A callable that returns a
         `tff.program.FileProgramStateManager` that will be used to create the
         overall evaluation manager's state manager, and each per evaluation loop
         state manager that will enable resuming and checkpointing.
       create_process_fn: A callable that returns a 2-tuple of
         `tff.learning.templates.LearningProcess` and
-        `tff.program.ReleaseManager` for the per-evaluation round metrics
-        releasing that will used be to start each evaluation loop.
+        `federated_language.program.ReleaseManager` for the per-evaluation round
+        metrics releasing that will used be to start each evaluation loop.
       cohort_size: An integer denoting the size of each evaluation round to
         select from the iterator created from `data_source`.
       duration: The `datetime.timedelta` duration to run each evaluation loop.
@@ -238,7 +238,7 @@ class EvaluationManager:
     self._pending_tasks: set[asyncio.Task] = set()
 
   @property
-  def data_source(self) -> data_source_lib.FederatedDataSource:
+  def data_source(self) -> federated_language.program.FederatedDataSource:
     """A data source used to create iterators each evaluation loop."""
     return self._data_source
 
@@ -246,7 +246,9 @@ class EvaluationManager:
   def aggregated_metrics_manager(
       self,
   ) -> Optional[
-      release_manager.ReleaseManager[release_manager.ReleasableStructure, int]
+      federated_language.program.ReleaseManager[
+          federated_language.program.ReleasableStructure, int
+      ]
   ]:
     """A manager for releasing metrics at the end of each evaluation loop."""
     return self._aggregated_metrics_manager
@@ -266,8 +268,8 @@ class EvaluationManager:
       tuple[
           learning_process.LearningProcess,
           Optional[
-              release_manager.ReleaseManager[
-                  release_manager.ReleasableStructure, int
+              federated_language.program.ReleaseManager[
+                  federated_language.program.ReleasableStructure, int
               ]
           ],
       ],
@@ -353,8 +355,8 @@ class EvaluationManager:
       train_round_num: int,
       eval_process: learning_process.LearningProcess,
       per_round_metrics_manager: Optional[
-          release_manager.ReleaseManager[
-              release_manager.ReleasableStructure, int
+          federated_language.program.ReleaseManager[
+              federated_language.program.ReleasableStructure, int
           ]
       ],
       state_manager: file_program_state_manager.FileProgramStateManager,
@@ -425,10 +427,10 @@ class EvaluationManager:
     evaluation_process, metrics_manager = self._create_evaluation_process_fn(
         evaluation_name
     )
-    eval_state = await value_reference.materialize_value(
+    eval_state = await federated_language.program.materialize_value(
         evaluation_process.initialize()
     )
-    eval_state = await value_reference.materialize_value(
+    eval_state = await federated_language.program.materialize_value(
         evaluation_process.set_model_weights(eval_state, model_weights)
     )
     await state_manager.save(eval_state, version=0)
@@ -563,14 +565,18 @@ async def _run_evaluation(
     state_manager: file_program_state_manager.FileProgramStateManager,
     evaluation_process: learning_process.LearningProcess,
     evaluation_name: str,
-    evaluation_data_source: data_source_lib.FederatedDataSource,
+    evaluation_data_source: federated_language.program.FederatedDataSource,
     evaluation_per_round_clients_number: int,
     evaluation_end_time: datetime.datetime,
     per_round_metrics_manager: Optional[
-        release_manager.ReleaseManager[release_manager.ReleasableStructure, int]
+        federated_language.program.ReleaseManager[
+            federated_language.program.ReleasableStructure, int
+        ]
     ],
     aggregated_metrics_manager: Optional[
-        release_manager.ReleaseManager[release_manager.ReleasableStructure, int]
+        federated_language.program.ReleaseManager[
+            federated_language.program.ReleasableStructure, int
+        ]
     ],
 ) -> None:
   """Runs evaluation for one training state.
@@ -585,29 +591,29 @@ async def _run_evaluation(
       evaluate the model produced after training. This process must have been
       created using `tff.learning.algorithms.build_fed_eval`.
     evaluation_name: A str name of the evaluation computation.
-    evaluation_data_source: A `tff.program.FederatedDataSource` which returns
-      client data used during evaluation.
+    evaluation_data_source: A `federated_language.program.FederatedDataSource`
+      which returns client data used during evaluation.
     evaluation_per_round_clients_number: Number of clients to evaluate in each
       round.
     evaluation_end_time: Expected end time for running the evaluation. Multiple
       evaluation rounds will be run until the `evaluation_end_time` has reached.
       If the `evaluation_end_time` has passed, only one round will be run.
-    per_round_metrics_manager: A `tff.program.ReleaseManager` that releases the
-      per-round evaluation metrics from platform to user storage. Use a
+    per_round_metrics_manager: A `federated_language.program.ReleaseManager`
+      that releases the per-round evaluation metrics from platform to user
+      storage. Use a `tff.programs.GroupingReleaseManager` to utilize multiple
+      release managers. If `None`, per-round metrics are not released.
+    aggregated_metrics_manager: A `federated_language.program.ReleaseManager`
+      that releases the evaluation metrics aggregated across the entire
+      evaluation loop from platform to user storage. Use a
       `tff.programs.GroupingReleaseManager` to utilize multiple release
-      managers. If `None`, per-round metrics are not released.
-    aggregated_metrics_manager: A `tff.program.ReleaseManager` that releases the
-      evaluation metrics aggregated across the entire evaluation loop from
-      platform to user storage. Use a `tff.programs.GroupingReleaseManager` to
-      utilize multiple release managers. If `None`, aggregated evaluation
-      metrics are not released.
+      managers. If `None`, aggregated evaluation metrics are not released.
 
   Raises:
     TypeError: If result of `evaluation_process` is not a value of
       `tff.learning.templates.LearningProcessOutput` type.
     ValueError: If no previous state found for evaluation.
   """
-  federated_context.check_in_federated_context()
+  federated_language.program.check_in_federated_context()
 
   evaluation_data_iterator = evaluation_data_source.iterator()
 
@@ -621,7 +627,7 @@ async def _run_evaluation(
     evaluation_data = evaluation_data_iterator.select(
         evaluation_per_round_clients_number
     )
-    evaluation_result = await value_reference.materialize_value(
+    evaluation_result = await federated_language.program.materialize_value(
         evaluation_process.next(evaluation_state, evaluation_data)
     )
     if isinstance(evaluation_result, learning_process.LearningProcessOutput):
@@ -657,7 +663,9 @@ async def _run_evaluation(
   # Read the initial state from the manager. If this is the first evaluation,
   # the zeroth version should contain the initial state.
   evaluation_state, version = await state_manager.load_latest(
-      await value_reference.materialize_value(evaluation_process.initialize())
+      await federated_language.program.materialize_value(
+          evaluation_process.initialize()
+      )
   )
   if evaluation_state is None:
     raise ValueError(

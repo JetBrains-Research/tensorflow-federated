@@ -26,6 +26,7 @@ Communication-Efficient Learning of Deep Networks from Decentralized Data
     https://arxiv.org/abs/1602.05629
 """
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 import tensorflow_federated as tff
@@ -86,7 +87,7 @@ def build_federated_averaging_process(
 
   model_weights_type = server_state_type.model_weights
 
-  client_state_type = tff.StructWithPythonType(
+  client_state_type = federated_language.StructWithPythonType(
       [
           ('client_index', np.int32),
           ('iters_count', np.int32),
@@ -112,8 +113,8 @@ def build_federated_averaging_process(
     return stateful_fedavg_tf.build_server_broadcast_message(server_state)
 
   server_message_type = server_message_fn.type_signature.result
-  element_type = tff.types.tensorflow_to_type(whimsy_model.input_spec)
-  tf_dataset_type = tff.SequenceType(element_type)
+  element_type = tff.tensorflow.to_type(whimsy_model.input_spec)
+  tf_dataset_type = federated_language.SequenceType(element_type)
 
   @tff.tensorflow.computation(
       tf_dataset_type, client_state_type, server_message_type
@@ -125,14 +126,18 @@ def build_federated_averaging_process(
         model, tf_dataset, client_state, server_message, client_optimizer
     )
 
-  federated_server_state_type = tff.FederatedType(server_state_type, tff.SERVER)
-  federated_dataset_type = tff.FederatedType(tf_dataset_type, tff.CLIENTS)
-
-  federated_client_state_type = tff.FederatedType(
-      client_state_type, tff.CLIENTS
+  federated_server_state_type = federated_language.FederatedType(
+      server_state_type, federated_language.SERVER
+  )
+  federated_dataset_type = federated_language.FederatedType(
+      tf_dataset_type, federated_language.CLIENTS
   )
 
-  @tff.federated_computation(
+  federated_client_state_type = federated_language.FederatedType(
+      client_state_type, federated_language.CLIENTS
+  )
+
+  @federated_language.federated_computation(
       federated_server_state_type,
       federated_dataset_type,
       federated_client_state_type,
@@ -143,40 +148,46 @@ def build_federated_averaging_process(
     Args:
       server_state: A `stateful_fedavg_tf.ServerState`.
       federated_dataset: A federated `tf.data.Dataset` with placement
-        `tff.CLIENTS`.
+        `federated_language.CLIENTS`.
       client_states: A federated `stateful_fedavg_tf.ClientState`.
 
     Returns:
       A tuple of updated `ServerState` and `tf.Tensor` of average loss.
     """
-    server_message = tff.federated_map(server_message_fn, server_state)
-    server_message_at_client = tff.federated_broadcast(server_message)
+    server_message = federated_language.federated_map(
+        server_message_fn, server_state
+    )
+    server_message_at_client = federated_language.federated_broadcast(
+        server_message
+    )
 
-    client_outputs = tff.federated_map(
+    client_outputs = federated_language.federated_map(
         client_update_fn,
         (federated_dataset, client_states, server_message_at_client),
     )
 
     weight_denom = client_outputs.client_weight
-    round_model_delta = tff.federated_mean(
+    round_model_delta = federated_language.federated_mean(
         client_outputs.weights_delta, weight=weight_denom
     )
-    total_iters_count = tff.federated_sum(
+    total_iters_count = federated_language.federated_sum(
         client_outputs.client_state.iters_count
     )
-    server_state = tff.federated_map(
+    server_state = federated_language.federated_map(
         server_update_fn, (server_state, round_model_delta, total_iters_count)
     )
-    round_loss_metric = tff.federated_mean(
+    round_loss_metric = federated_language.federated_mean(
         client_outputs.model_output, weight=weight_denom
     )
 
     return server_state, round_loss_metric, client_outputs.client_state
 
-  @tff.federated_computation
+  @federated_language.federated_computation
   def server_init_tff():
     """Orchestration logic for server model initialization."""
-    return tff.federated_value(server_init_tf(), tff.SERVER)
+    return federated_language.federated_value(
+        server_init_tf(), federated_language.SERVER
+    )
 
   return tff.templates.IterativeProcess(
       initialize_fn=server_init_tff, next_fn=run_one_round

@@ -148,8 +148,10 @@ def main(argv):
     )
 
   # Build a standard federated averaging process for training the global model.
-  client_opt = lambda: tf.keras.optimizers.SGD(learning_rate=0.02)
-  server_opt = lambda: tf.keras.optimizers.SGD(learning_rate=1.0, momentum=0.9)
+  client_opt = tff.learning.optimizers.build_sgdm(learning_rate=0.02)
+  server_opt = tff.learning.optimizers.build_sgdm(
+      learning_rate=1.0, momentum=0.9
+  )
   learning_process = tff.learning.algorithms.build_weighted_fed_avg(
       model_fn=model_fn,
       client_optimizer_fn=client_opt,
@@ -188,8 +190,9 @@ def main(argv):
       num_epochs_per_eval=1,
   )
 
-  # Build the `tff.Computation` for evaluating the personalization strategies.
-  # Here `p13n_eval` is a `tff.Computation` with the following type signature:
+  # Build the `federated_language.Computation` for evaluating the
+  # personalization strategies. Here `p13n_eval` is a
+  # `federated_language.Computation` with the following type signature:
   # <model_weights@SERVER, datasets@CLIENTS> -> personalization_metrics@SERVER.
   p13n_eval = tff.learning.algorithms.build_personalization_eval_computation(
       model_fn=model_fn,

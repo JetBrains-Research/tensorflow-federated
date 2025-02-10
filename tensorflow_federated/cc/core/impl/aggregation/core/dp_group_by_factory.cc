@@ -63,8 +63,6 @@ StatusOr<std::unique_ptr<TensorAggregator>> DPGroupByFactory::CreateInternal(
   TFF_RETURN_IF_ERROR(GroupByFactory::CheckIntrinsic(intrinsic, kDPGroupByUri));
 
   // DPGroupByAggregator expects parameters
-  constexpr int64_t kEpsilonIndex = 0;
-  constexpr int64_t kDeltaIndex = 1;
   constexpr int64_t kL0Index = 2;
   constexpr int kNumOpenDomainParameters = 3;
 
@@ -129,7 +127,10 @@ StatusOr<std::unique_ptr<TensorAggregator>> DPGroupByFactory::CreateInternal(
     return TFF_STATUS(INVALID_ARGUMENT)
            << "DPGroupByFactory: Epsilon must be positive.";
   }
-  double epsilon_per_agg = epsilon / intrinsic.nested_intrinsics.size();
+  auto num_nested_intrinsics = intrinsic.nested_intrinsics.size();
+  double epsilon_per_agg =
+      (epsilon < kEpsilonThreshold ? epsilon / num_nested_intrinsics
+                                   : kEpsilonThreshold);
 
   // Delta must be a number
   if (internal::GetTypeKind(intrinsic.parameters[kDeltaIndex].dtype()) !=
@@ -154,7 +155,7 @@ StatusOr<std::unique_ptr<TensorAggregator>> DPGroupByFactory::CreateInternal(
                 "be less than 1.";
     }
   }
-  double delta_per_agg = delta / intrinsic.nested_intrinsics.size();
+  double delta_per_agg = delta / num_nested_intrinsics;
 
   // L0 bound must be a number
   if (internal::GetTypeKind(intrinsic.parameters[kL0Index].dtype()) !=

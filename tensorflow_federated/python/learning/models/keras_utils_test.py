@@ -20,15 +20,13 @@ import collections
 import warnings
 
 from absl.testing import parameterized
+import federated_language
 import numpy as np
 import tensorflow as tf
 
 from tensorflow_federated.python.core.backends.native import execution_contexts
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.computation import computation_base
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
+from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_types
 from tensorflow_federated.python.learning.metrics import aggregator
 from tensorflow_federated.python.learning.metrics import counters
 from tensorflow_federated.python.learning.models import keras_utils
@@ -131,12 +129,12 @@ class KerasUtilsTest(tf.test.TestCase, parameterized.TestCase):
       ),
       (
           'tff_struct_with_python_type',
-          computation_types.StructWithPythonType(
+          federated_language.StructWithPythonType(
               collections.OrderedDict(
-                  x=computation_types.TensorType(
+                  x=federated_language.TensorType(
                       shape=[None, 1], dtype=np.float32
                   ),
-                  y=computation_types.TensorType(
+                  y=federated_language.TensorType(
                       shape=[None, 1], dtype=np.float32
                   ),
               ),
@@ -162,10 +160,10 @@ class KerasUtilsTest(tf.test.TestCase, parameterized.TestCase):
     keras_model = model_examples.build_linear_regression_keras_functional_model(
         feature_dims=1
     )
-    input_type = computation_types.StructWithPythonType(
+    input_type = federated_language.StructWithPythonType(
         [
-            ('x', computation_types.TensorType(np.float32, [None, 1])),
-            ('y', computation_types.TensorType(np.float32, [None, 1])),
+            ('x', federated_language.TensorType(np.float32, [None, 1])),
+            ('y', federated_language.TensorType(np.float32, [None, 1])),
         ],
         collections.OrderedDict,
     )
@@ -247,21 +245,21 @@ class KerasUtilsTest(tf.test.TestCase, parameterized.TestCase):
       ),
       (
           'tff_type_not_tensortype',
-          computation_types.StructWithPythonType(
+          federated_language.StructWithPythonType(
               [
                   (
                       'x',
-                      computation_types.SequenceType(
-                          computation_types.TensorType(np.float32)
+                      federated_language.SequenceType(
+                          federated_language.TensorType(np.float32)
                       ),
                   ),
-                  ('y', computation_types.TensorType(np.float32, [None, 1])),
+                  ('y', federated_language.TensorType(np.float32, [None, 1])),
               ],
               collections.OrderedDict,
           ),
           (
-              'Expected a `tff.Type` with all the leaf nodes being'
-              ' `tff.TensorType`s'
+              'Expected a `federated_language.Type` with all the leaf nodes'
+              ' being `federated_language.TensorType`s'
           ),
       ),
   )
@@ -785,16 +783,17 @@ class KerasUtilsTest(tf.test.TestCase, parameterized.TestCase):
         tff_model.metric_finalizers(), unfinalized_metrics_type
     )
 
-    @federated_computation.federated_computation(
-        computation_types.FederatedType(
-            unfinalized_metrics_type, placements.CLIENTS
+    @federated_language.federated_computation(
+        federated_language.FederatedType(
+            unfinalized_metrics_type, federated_language.CLIENTS
         )
     )
     def wrapped_metrics_aggregation_computation(unfinalized_metrics):
       return metrics_aggregation_computation(unfinalized_metrics)
 
     self.assertIsInstance(
-        wrapped_metrics_aggregation_computation, computation_base.Computation
+        wrapped_metrics_aggregation_computation,
+        federated_language.framework.Computation,
     )
 
     aggregated_outputs = wrapped_metrics_aggregation_computation(
@@ -874,17 +873,17 @@ class KerasUtilsTest(tf.test.TestCase, parameterized.TestCase):
       ),
       (
           'tff_struct_with_python_type',
-          computation_types.StructWithPythonType(
+          federated_language.StructWithPythonType(
               [
                   (
                       'x',
-                      computation_types.tensorflow_to_type(
+                      tensorflow_types.to_type(
                           _create_input_spec_multiple_inputs_outputs()['x']
                       ),
                   ),
                   (
                       'y',
-                      computation_types.tensorflow_to_type(
+                      tensorflow_types.to_type(
                           _create_input_spec_multiple_inputs_outputs()['y']
                       ),
                   ),
@@ -894,16 +893,16 @@ class KerasUtilsTest(tf.test.TestCase, parameterized.TestCase):
       ),
       (
           'tff_struct_type',
-          computation_types.StructType([
+          federated_language.StructType([
               (
                   'x',
-                  computation_types.tensorflow_to_type(
+                  tensorflow_types.to_type(
                       _create_input_spec_multiple_inputs_outputs()['x']
                   ),
               ),
               (
                   'y',
-                  computation_types.tensorflow_to_type(
+                  tensorflow_types.to_type(
                       _create_input_spec_multiple_inputs_outputs()['y']
                   ),
               ),
@@ -1044,17 +1043,17 @@ class KerasUtilsTest(tf.test.TestCase, parameterized.TestCase):
       ),
       (
           'tff_struct_with_python_type',
-          computation_types.StructWithPythonType(
+          federated_language.StructWithPythonType(
               [
                   (
                       'x',
-                      computation_types.tensorflow_to_type(
+                      tensorflow_types.to_type(
                           _create_input_spec_multiple_inputs_outputs()['x']
                       ),
                   ),
                   (
                       'y',
-                      computation_types.tensorflow_to_type(
+                      tensorflow_types.to_type(
                           _create_input_spec_multiple_inputs_outputs()['y']
                       ),
                   ),
@@ -1064,16 +1063,16 @@ class KerasUtilsTest(tf.test.TestCase, parameterized.TestCase):
       ),
       (
           'tff_struct_type',
-          computation_types.StructType([
+          federated_language.StructType([
               (
                   'x',
-                  computation_types.tensorflow_to_type(
+                  tensorflow_types.to_type(
                       _create_input_spec_multiple_inputs_outputs()['x']
                   ),
               ),
               (
                   'y',
-                  computation_types.tensorflow_to_type(
+                  tensorflow_types.to_type(
                       _create_input_spec_multiple_inputs_outputs()['y']
                   ),
               ),
@@ -1333,9 +1332,9 @@ class KerasUtilsTest(tf.test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(TypeError, 'extra arguments'):
 
-      @federated_computation.federated_computation(
-          computation_types.FederatedType(
-              unfinalized_metrics_type, placements.CLIENTS
+      @federated_language.federated_computation(
+          federated_language.FederatedType(
+              unfinalized_metrics_type, federated_language.CLIENTS
           )
       )
       def _(unfinalized_metrics):
@@ -1378,16 +1377,17 @@ class KerasUtilsTest(tf.test.TestCase, parameterized.TestCase):
         tff_model.metric_finalizers(), unfinalized_metrics_type
     )
 
-    @federated_computation.federated_computation(
-        computation_types.FederatedType(
-            unfinalized_metrics_type, placements.CLIENTS
+    @federated_language.federated_computation(
+        federated_language.FederatedType(
+            unfinalized_metrics_type, federated_language.CLIENTS
         )
     )
     def wrapped_federated_metrics_aggregation(unfinalized_metrics):
       return federated_metrics_aggregation(unfinalized_metrics)
 
     self.assertIsInstance(
-        wrapped_federated_metrics_aggregation, computation_base.Computation
+        wrapped_federated_metrics_aggregation,
+        federated_language.framework.Computation,
     )
 
   @parameterized.named_parameters(

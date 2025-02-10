@@ -18,9 +18,10 @@ import collections
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any, NamedTuple, Optional
 
+import federated_language
 import tensorflow as tf
 
-from tensorflow_federated.python.core.impl.types import computation_types
+from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_types
 from tensorflow_federated.python.learning.models import model_weights
 from tensorflow_federated.python.learning.models import variable
 
@@ -513,7 +514,7 @@ class _KerasReconstructionModel(ReconstructionModel):
       global_non_trainable_variables: Iterable[tf.Variable],
       local_trainable_variables: Iterable[tf.Variable],
       local_non_trainable_variables: Iterable[tf.Variable],
-      input_spec: computation_types.Type,
+      input_spec: federated_language.Type,
   ):
     if not isinstance(inner_model, tf.keras.Model):
       raise TypeError(
@@ -649,26 +650,27 @@ class _KerasReconstructionModel(ReconstructionModel):
 
 def global_weights_type_from_model(
     model: ReconstructionModel,
-) -> computation_types.StructType:
-  """Creates a `tff.Type` from a `tff.learning.models.ReconstructionModel`.
+) -> federated_language.StructType:
+  """Creates a `federated_language.Type` from a `tff.learning.models.ReconstructionModel`.
 
   Args:
     model: A `tff.learning.models.ReconstructionModel`
 
   Returns:
-    A `tff.StructType` representing the TFF type of the model's global
+    A `federated_language.StructType` representing the TFF type of the model's
+    global
     variables.
   """
   global_model_weights = ReconstructionModel.get_global_variables(model)
 
-  def _variable_to_type(x: tf.Variable) -> computation_types.Type:
-    return computation_types.tensorflow_to_type((x.dtype, x.shape))
+  def _variable_to_type(x: tf.Variable) -> federated_language.Type:
+    return tensorflow_types.to_type((x.dtype, x.shape))
 
   model_weights_type = tf.nest.map_structure(
       _variable_to_type, global_model_weights
   )
   # StructWithPythonType operates recursively, and will preserve the python type
   # information of model.trainable_variables and model.non_trainable_variables.
-  return computation_types.StructWithPythonType(
+  return federated_language.StructWithPythonType(
       model_weights_type, model_weights.ModelWeights
   )

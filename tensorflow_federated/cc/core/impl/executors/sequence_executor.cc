@@ -21,7 +21,6 @@ limitations under the License
 #include <future>  // NOLINT
 #include <memory>
 #include <optional>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -31,19 +30,19 @@ limitations under the License
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "federated_language/proto/computation.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow_federated/cc/core/impl/executors/dataset_conversions.h"
+#include "tensorflow_federated/cc/core/impl/executors/dataset_utils.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/sequence_intrinsics.h"
 #include "tensorflow_federated/cc/core/impl/executors/status_macros.h"
 #include "tensorflow_federated/cc/core/impl/executors/struct_traversal_order.h"
 #include "tensorflow_federated/cc/core/impl/executors/tensor_serialization.h"
 #include "tensorflow_federated/cc/core/impl/executors/threading.h"
-#include "tensorflow_federated/proto/v0/computation.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace tensorflow_federated {
@@ -68,12 +67,13 @@ class SequenceIterator {
 
 // Computes the number of tensors in a nested tensor type, returning an error
 // status if a type other than tensor or structure is encountered.
-absl::StatusOr<uint32_t> NumTensorsInType(const v0::Type& type) {
+absl::StatusOr<uint32_t> NumTensorsInType(
+    const federated_language::Type& type) {
   switch (type.type_case()) {
-    case v0::Type::kTensor: {
+    case federated_language::Type::kTensor: {
       return 1;
     }
-    case v0::Type::kStruct: {
+    case federated_language::Type::kStruct: {
       uint32_t total_count = 0;
       for (const auto& el_type : type.struct_().element()) {
         total_count += TFF_TRY(NumTensorsInType(el_type.value()));
@@ -90,9 +90,9 @@ absl::StatusOr<uint32_t> NumTensorsInType(const v0::Type& type) {
 
 absl::StatusOr<Embedded> EmbedTensorsAsType(
     const absl::Span<const tensorflow::Tensor> tensors,
-    Executor& target_executor, const v0::Type& type) {
+    Executor& target_executor, const federated_language::Type& type) {
   switch (type.type_case()) {
-    case v0::Type::kTensor: {
+    case federated_language::Type::kTensor: {
       if (tensors.size() != 1) {
         return absl::InvalidArgumentError(absl::StrCat(
             "Attempted to embed a vector of tensors of length ", tensors.size(),
@@ -104,7 +104,7 @@ absl::StatusOr<Embedded> EmbedTensorsAsType(
       TFF_TRY(SerializeTensorValue(tensors.at(0), &tensor_value));
       return ShareValueId(TFF_TRY(target_executor.CreateValue(tensor_value)));
     }
-    case v0::Type::kStruct: {
+    case federated_language::Type::kStruct: {
       std::vector<uint32_t> traversal_order =
           TFF_TRY(TFNestTraversalOrderFromStruct(type.struct_()));
       uint32_t next_element_index = 0;
@@ -161,7 +161,7 @@ class DatasetIterator : public SequenceIterator {
  public:
   explicit DatasetIterator(
       std::unique_ptr<tensorflow::data::standalone::Iterator> iter,
-      v0::Type element_type)
+      federated_language::Type element_type)
       : ds_iterator_(std::move(iter)), element_type_(std::move(element_type)) {}
 
   ~DatasetIterator() final = default;
@@ -185,7 +185,7 @@ class DatasetIterator : public SequenceIterator {
  private:
   DatasetIterator() = delete;
   std::unique_ptr<tensorflow::data::standalone::Iterator> ds_iterator_;
-  v0::Type element_type_;
+  federated_language::Type element_type_;
 };
 
 class SequenceIterator;
@@ -247,11 +247,11 @@ class Sequence {
       if (!ds_is_set) {
         absl::WriterMutexLock writer_lock(&dataset_mutex_);
         if (!ds_.has_value()) {
-          ds_ = TFF_TRY(SequenceValueToDataset(proto().sequence()));
+          ds_ = TFF_TRY(DatasetFromSequence(proto().sequence()));
         }
       }
       std::unique_ptr<tensorflow::data::standalone::Iterator> iter;
-      tensorflow::Status iter_status;
+      absl::Status iter_status;
       {
         absl::ReaderMutexLock reader_lock(&dataset_mutex_);
         iter_status = ds_.value()->MakeIterator(&iter);
@@ -321,7 +321,7 @@ class SequenceExecutorValue {
     }
   }
   absl::Status CheckTypeForArgument(ValueType expected_type,
-                                    std::string_view fn_name,
+                                    absl::string_view fn_name,
                                     std::optional<int32_t> position_in_struct) {
     if (type() != expected_type) {
       if (position_in_struct.has_value()) {
@@ -360,7 +360,7 @@ class SequenceExecutorValue {
 };
 
 absl::Status CheckLenForUseAsArgument(const SequenceExecutorValue& value,
-                                      std::string_view function_name,
+                                      absl::string_view function_name,
                                       size_t len) {
   if (value.type() != SequenceExecutorValue::ValueType::STRUCT) {
     return absl::InvalidArgumentError(
@@ -386,7 +386,7 @@ class SequenceExecutor : public ExecutorBase<ValueFuture> {
       : target_executor_(target_executor) {}
   ~SequenceExecutor() override = default;
 
-  std::string_view ExecutorName() final { return "SequenceExecutor"; }
+  absl::string_view ExecutorName() final { return "SequenceExecutor"; }
 
   absl::StatusOr<ValueFuture> CreateExecutorValue(
       const v0::Value& value_pb) final {
@@ -401,7 +401,7 @@ class SequenceExecutor : public ExecutorBase<ValueFuture> {
       }
       case v0::Value::kComputation: {
         if (value_pb.computation().has_intrinsic()) {
-          std::string_view intrinsic_uri =
+          absl::string_view intrinsic_uri =
               value_pb.computation().intrinsic().uri();
           absl::StatusOr<SequenceIntrinsic> intrinsic_or_status =
               SequenceIntrinsicFromUri(intrinsic_uri);

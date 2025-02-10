@@ -14,53 +14,43 @@
 """A federated platform implemented using native TFF components."""
 
 import asyncio
-from typing import Optional, TypeVar, Union
+from collections.abc import Mapping
+from typing import Optional, Union
+
+import federated_language
+import tree
 
 from tensorflow_federated.python.common_libs import structure
-from tensorflow_federated.python.core.impl.computation import computation_base
-from tensorflow_federated.python.core.impl.execution_contexts import async_execution_context
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
-from tensorflow_federated.python.core.impl.types import type_conversions
-from tensorflow_federated.python.program import federated_context
 from tensorflow_federated.python.program import structure_utils
-from tensorflow_federated.python.program import value_reference
 
 
-_T = TypeVar('_T')
-# This type defines values of type `_T` nested in a structure of
-# `tff.structure.Struct`'s.
-# TODO: b/232433269 - Update `tff.structure.Struct` to be able to define nested
-# homogeneous structures of `tff.structure.Struct`s.
-_StructStructure = Union[
-    _T,
-    structure.Struct,
-]
-
-
-class NativeValueReference(value_reference.MaterializableValueReference):
-  """A `tff.program.MaterializableValueReference` backed by a task."""
+class NativeValueReference(
+    federated_language.program.MaterializableValueReference
+):
+  """A `federated_language.program.MaterializableValueReference` backed by a task."""
 
   def __init__(
       self,
       task: asyncio.Task,
-      type_signature: value_reference.MaterializableTypeSignature,
+      type_signature: federated_language.program.MaterializableTypeSignature,
   ):
     """Returns an initialized `tff.program.NativeValueReference`.
 
     Args:
       task: An `asyncio.Task` to run.
-      type_signature: The `tff.Type` of this object.
+      type_signature: The `federated_language.Type` of this object.
     """
     self._task = task
     self._type_signature = type_signature
 
   @property
-  def type_signature(self) -> value_reference.MaterializableTypeSignature:
-    """The `tff.TensorType` of this object."""
+  def type_signature(
+      self,
+  ) -> federated_language.program.MaterializableTypeSignature:
+    """The `federated_language.TensorType` of this object."""
     return self._type_signature
 
-  async def get_value(self) -> value_reference.MaterializedValue:
+  async def get_value(self) -> federated_language.program.MaterializedValue:
     """Returns the referenced value as a numpy scalar or array."""
     return await self._task
 
@@ -80,120 +70,101 @@ class NativeValueReference(value_reference.MaterializableValueReference):
 
 def _create_structure_of_references(
     task: asyncio.Task,
-    type_signature: computation_types.Type,
-) -> _StructStructure[NativeValueReference]:
+    type_signature: federated_language.Type,
+) -> structure_utils.Structure[NativeValueReference]:
   """Returns a structure of `tff.program.NativeValueReference`s.
 
   Args:
     task: A task used to create the structure of
       `tff.program.NativeValueReference`s.
-    type_signature: The `tff.Type` of the value returned by `task`; must contain
-      only structures, server-placed values, or tensors.
+    type_signature: The `federated_language.Type` of the value returned by
+      `task`; must contain only structures, server-placed values, or tensors.
 
   Raises:
     NotImplementedError: If `type_signature` contains an unexpected type.
   """
+  if isinstance(type_signature, federated_language.StructType):
 
-  if isinstance(type_signature, computation_types.StructType):
-
-    async def _to_structure(task: asyncio.Task) -> structure.Struct:
-      value = await task
-      return structure.from_container(value)
-
-    coro = _to_structure(task)
-    task = asyncio.create_task(coro)
+    def _get_container_cls(
+        type_spec: federated_language.StructType,
+    ) -> type[object]:
+      container_cls = type_spec.python_container
+      if container_cls is None:
+        has_names = [name is not None for name, _ in type_spec.items()]
+        if any(has_names):
+          if not all(has_names):
+            raise ValueError(
+                'Expected `type_spec` to have either all named or unnamed'
+                f' elements, found {type_spec}.'
+            )
+          container_cls = dict
+        else:
+          container_cls = list
+      return container_cls
 
     async def _get_item(
-        task: asyncio.Task, index: int
-    ) -> value_reference.MaterializedValue:
+        task: asyncio.Task, key: Union[str, int]
+    ) -> federated_language.program.MaterializedValue:
       value = await task
-      return value[index]
+      return value[key]
 
     elements = []
-    element_types = structure.iter_elements(type_signature)
-    for index, (name, element_type) in enumerate(element_types):
-      element = _get_item(task, index)
+    for index, (name, element_type) in enumerate(type_signature.items()):
+      container_cls = _get_container_cls(type_signature)
+      if issubclass(container_cls, Mapping):
+        key = name
+      else:
+        key = index
+      element = _get_item(task, key)
       element_task = asyncio.create_task(element)
       element = _create_structure_of_references(element_task, element_type)
-      elements.append((name, element))
-    return structure.Struct(elements)
+      elements.append(element)
+    return federated_language.framework.to_structure_with_type(
+        elements, type_signature
+    )
   elif (
-      isinstance(type_signature, computation_types.FederatedType)
-      and type_signature.placement == placements.SERVER
+      isinstance(type_signature, federated_language.FederatedType)
+      and type_signature.placement == federated_language.SERVER
   ):
     return _create_structure_of_references(task, type_signature.member)
-  elif isinstance(type_signature, computation_types.SequenceType):
+  elif isinstance(type_signature, federated_language.SequenceType):
     return NativeValueReference(task, type_signature)
-  elif isinstance(type_signature, computation_types.TensorType):
+  elif isinstance(type_signature, federated_language.TensorType):
     return NativeValueReference(task, type_signature)
   else:
     raise NotImplementedError(f'Unexpected type found: {type_signature}.')
 
 
-async def _materialize_structure_of_references(
-    value: value_reference.MaterializableStructure,
-    type_signature: computation_types.Type,
-) -> _StructStructure[value_reference.MaterializedValue]:
-  """Returns a structure of materialized values."""
+class NativeFederatedContext(federated_language.program.FederatedContext):
+  """A `federated_language.program.FederatedContext` backed by an execution context."""
 
-  async def _materialize(
-      value: value_reference.MaterializableValue,
-  ) -> value_reference.MaterializedValue:
-    if isinstance(value, value_reference.MaterializableValueReference):
-      return await value.get_value()
-    else:
-      return value
-
-  if isinstance(type_signature, computation_types.StructType):
-    value = structure.from_container(value)
-    element_types = list(structure.iter_elements(type_signature))
-    element_awaitables = [
-        _materialize_structure_of_references(v, t)
-        for v, (_, t) in zip(value, element_types)
-    ]
-    elements = await asyncio.gather(*element_awaitables)
-    elements = [(n, v) for v, (n, _) in zip(elements, element_types)]
-    return structure.Struct(elements)
-  elif isinstance(type_signature, computation_types.FederatedType):
-    return await _materialize_structure_of_references(
-        value, type_signature.member
-    )
-  elif isinstance(type_signature, computation_types.SequenceType):
-    return await _materialize(value)
-  elif isinstance(type_signature, computation_types.TensorType):
-    return await _materialize(value)
-  else:
-    raise NotImplementedError(f'Unexpected type found: {type_signature}.')
-
-
-class NativeFederatedContext(federated_context.FederatedContext):
-  """A `tff.program.FederatedContext` backed by an execution context."""
-
-  def __init__(self, context: async_execution_context.AsyncExecutionContext):
+  def __init__(
+      self, context: federated_language.framework.AsyncExecutionContext
+  ):
     """Returns an initialized `tff.program.NativeFederatedContext`.
 
     Args:
-      context: An `tff.framework.AsyncExecutionContext`.
+      context: An `federated_language.framework.AsyncExecutionContext`.
     """
     self._context = context
 
   def invoke(
       self,
-      comp: computation_base.Computation,
-      arg: Optional[federated_context.ComputationArgValue],
+      comp: federated_language.framework.Computation,
+      arg: Optional[federated_language.program.ComputationArg],
   ) -> structure_utils.Structure[NativeValueReference]:
     """Invokes the `comp` with the argument `arg`.
 
     Args:
-      comp: The `tff.Computation` being invoked.
+      comp: The `federated_language.Computation` being invoked.
       arg: The optional argument of `comp`; server-placed values must be
-        represented by `tff.program.MaterializableStructure`, and client-placed
-        values must be represented by structures of values returned by a
-        `tff.program.FederatedDataSourceIterator`.
+        represented by `federated_language.program.MaterializableStructure`, and
+        client-placed values must be represented by structures of values
+        returned by a `federated_language.program.FederatedDataSourceIterator`.
 
     Returns:
       The result of invocation; a structure of
-      `tff.program.MaterializableValueReference`.
+      `federated_language.program.MaterializableValueReference`.
 
     Raises:
       ValueError: If the result type of the invoked computation does not contain
@@ -203,25 +174,32 @@ class NativeFederatedContext(federated_context.FederatedContext):
       server-placed values, or tensors.
     """
     result_type = comp.type_signature.result
-    if not federated_context.contains_only_server_placed_data(result_type):
+    if not federated_language.program.contains_only_server_placed_data(
+        result_type
+    ):
       raise ValueError(
           'Expected the result type of `comp` to contain only structures, '
           f'server-placed values, or tensors, found {result_type}.'
       )
 
     async def _invoke(
-        context: async_execution_context.AsyncExecutionContext,
-        comp: computation_base.Computation,
-        arg: value_reference.MaterializableStructure,
-    ) -> value_reference.MaterializedStructure:
+        context: federated_language.framework.AsyncExecutionContext,
+        comp: federated_language.framework.Computation,
+        arg: federated_language.program.MaterializableStructure,
+    ) -> federated_language.program.MaterializedStructure:
       if comp.type_signature.parameter is not None:
-        arg = await _materialize_structure_of_references(
-            arg, comp.type_signature.parameter
-        )
+
+        def _to_python(obj):
+          if isinstance(obj, structure.Struct):
+            return structure.to_odict_or_tuple(obj)
+          else:
+            return None
+
+        arg = tree.traverse(_to_python, arg)
+        arg = await federated_language.program.materialize_value(arg)
+
       return await context.invoke(comp, arg)
 
     coro = _invoke(self._context, comp, arg)
     task = asyncio.create_task(coro)
-    result = _create_structure_of_references(task, result_type)
-    result = type_conversions.type_to_py_container(result, result_type)
-    return result
+    return _create_structure_of_references(task, result_type)

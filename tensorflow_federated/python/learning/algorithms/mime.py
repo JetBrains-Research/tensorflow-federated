@@ -26,6 +26,7 @@ import collections
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Optional, Union
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 
@@ -33,12 +34,9 @@ from tensorflow_federated.python.aggregators import factory
 from tensorflow_federated.python.aggregators import factory_utils
 from tensorflow_federated.python.aggregators import mean
 from tensorflow_federated.python.common_libs import py_typecheck
+from tensorflow_federated.python.core.environments.tensorflow_backend import type_conversions
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
-from tensorflow_federated.python.core.impl.types import type_conversions
+from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_types
 from tensorflow_federated.python.core.templates import measured_process
 from tensorflow_federated.python.learning import client_weight_lib
 from tensorflow_federated.python.learning import loop_builder
@@ -211,11 +209,12 @@ def _build_mime_lite_client_work(
       `tff.aggregators.MeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -239,26 +238,26 @@ def _build_mime_lite_client_work(
     metrics_aggregation_fn = metrics_aggregator(
         model.metric_finalizers(),
     )
-  element_type = computation_types.tensorflow_to_type(model.input_spec)
-  data_type = computation_types.SequenceType(element_type)
+  element_type = tensorflow_types.to_type(model.input_spec)
+  data_type = federated_language.SequenceType(element_type)
   weights_type = model_weights_lib.weights_type_from_model(model)
   weight_tensor_specs = type_conversions.type_to_tf_tensor_specs(weights_type)
 
   full_gradient_aggregator = full_gradient_aggregator.create(
-      weights_type.trainable, computation_types.TensorType(np.float32)
+      weights_type.trainable, federated_language.TensorType(np.float32)
   )
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def init_fn():
     specs = weight_tensor_specs.trainable
-    optimizer_state = intrinsics.federated_eval(
+    optimizer_state = federated_language.federated_eval(
         tensorflow_computation.tf_computation(
             lambda: optimizer.initialize(specs)
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
     aggregator_state = full_gradient_aggregator.initialize()
-    return intrinsics.federated_zip((optimizer_state, aggregator_state))
+    return federated_language.federated_zip((optimizer_state, aggregator_state))
 
   client_update_fn = _build_client_update_fn_for_mime_lite(
       model_fn,
@@ -277,30 +276,36 @@ def _build_mime_lite_client_work(
     updated_state, _ = optimizer.next(state, whimsy_weights, aggregate_gradient)
     return updated_state
 
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       init_fn.type_signature.result,
-      computation_types.FederatedType(weights_type, placements.CLIENTS),
-      computation_types.FederatedType(data_type, placements.CLIENTS),
+      federated_language.FederatedType(
+          weights_type, federated_language.CLIENTS
+      ),
+      federated_language.FederatedType(data_type, federated_language.CLIENTS),
   )
   def next_fn(state, weights, client_data):
     optimizer_state, aggregator_state = state
-    optimizer_state_at_clients = intrinsics.federated_broadcast(optimizer_state)
-    client_result, model_outputs, full_gradient = intrinsics.federated_map(
-        client_update_fn, (optimizer_state_at_clients, weights, client_data)
+    optimizer_state_at_clients = federated_language.federated_broadcast(
+        optimizer_state
+    )
+    client_result, model_outputs, full_gradient = (
+        federated_language.federated_map(
+            client_update_fn, (optimizer_state_at_clients, weights, client_data)
+        )
     )
     full_gradient_agg_output = full_gradient_aggregator.next(
         aggregator_state, full_gradient, client_result.update_weight
     )
-    updated_optimizer_state = intrinsics.federated_map(
+    updated_optimizer_state = federated_language.federated_map(
         update_optimizer_state,
         (optimizer_state, full_gradient_agg_output.result),
     )
 
-    new_state = intrinsics.federated_zip(
+    new_state = federated_language.federated_zip(
         (updated_optimizer_state, full_gradient_agg_output.state)
     )
     train_metrics = metrics_aggregation_fn(model_outputs)
-    measurements = intrinsics.federated_zip(
+    measurements = federated_language.federated_zip(
         collections.OrderedDict(train=train_metrics)
     )
     return measured_process.MeasuredProcessOutput(
@@ -495,11 +500,12 @@ def _build_mime_lite_functional_client_work(
       `tff.aggregators.MeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -517,8 +523,8 @@ def _build_mime_lite_functional_client_work(
   if metrics_aggregator is None:
     metrics_aggregator = metric_aggregator.sum_then_finalize
 
-  element_type = computation_types.tensorflow_to_type(model.input_spec)
-  data_type = computation_types.SequenceType(element_type)
+  element_type = tensorflow_types.to_type(model.input_spec)
+  data_type = federated_language.SequenceType(element_type)
 
   def ndarray_to_tensorspec(ndarray):
     return tf.TensorSpec(
@@ -530,24 +536,24 @@ def _build_mime_lite_functional_client_work(
       tuple(ndarray_to_tensorspec(w) for w in model.initial_weights[0]),
       tuple(ndarray_to_tensorspec(w) for w in model.initial_weights[1]),
   )
-  weights_type = computation_types.tensorflow_to_type(weights_spec)
+  weights_type = tensorflow_types.to_type(weights_spec)
   weight_tensor_specs = type_conversions.type_to_tf_tensor_specs(weights_type)
 
   full_gradient_aggregator = full_gradient_aggregator.create(
       weights_type.trainable,  # pytype: disable=attribute-error
-      computation_types.TensorType(np.float32),
+      federated_language.TensorType(np.float32),
   )
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def init_fn():
-    optimizer_state = intrinsics.federated_eval(
+    optimizer_state = federated_language.federated_eval(
         tensorflow_computation.tf_computation(
             lambda: optimizer.initialize(weight_tensor_specs.trainable)
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
     aggregator_state = full_gradient_aggregator.initialize()
-    return intrinsics.federated_zip((optimizer_state, aggregator_state))
+    return federated_language.federated_zip((optimizer_state, aggregator_state))
 
   client_update_fn = _build_functional_client_update_fn_for_mime_lite(
       model=model,
@@ -569,28 +575,32 @@ def _build_mime_lite_functional_client_work(
     updated_state, _ = optimizer.next(state, whimsy_weights, aggregate_gradient)
     return updated_state
 
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       init_fn.type_signature.result,
-      computation_types.FederatedType(weights_type, placements.CLIENTS),
-      computation_types.FederatedType(data_type, placements.CLIENTS),
+      federated_language.FederatedType(
+          weights_type, federated_language.CLIENTS
+      ),
+      federated_language.FederatedType(data_type, federated_language.CLIENTS),
   )
   def next_fn(state, weights, client_data):
     optimizer_state, aggregator_state = state
-    optimizer_state_at_clients = intrinsics.federated_broadcast(optimizer_state)
+    optimizer_state_at_clients = federated_language.federated_broadcast(
+        optimizer_state
+    )
     client_result, unfinalized_metrics, full_gradient = (
-        intrinsics.federated_map(
+        federated_language.federated_map(
             client_update_fn, (optimizer_state_at_clients, weights, client_data)
         )
     )
     full_gradient_agg_output = full_gradient_aggregator.next(
         aggregator_state, full_gradient, client_result.update_weight
     )
-    updated_optimizer_state = intrinsics.federated_map(
+    updated_optimizer_state = federated_language.federated_map(
         update_optimizer_state,
         (optimizer_state, full_gradient_agg_output.result),
     )
 
-    new_state = intrinsics.federated_zip(
+    new_state = federated_language.federated_zip(
         (updated_optimizer_state, full_gradient_agg_output.state)
     )
 
@@ -598,7 +608,7 @@ def _build_mime_lite_functional_client_work(
         model.finalize_metrics, unfinalized_metrics.type_signature.member
     )
     train_metrics = metrics_aggregation_fn(unfinalized_metrics)
-    measurements = intrinsics.federated_zip(
+    measurements = federated_language.federated_zip(
         collections.OrderedDict(train=train_metrics)
     )
     return measured_process.MeasuredProcessOutput(
@@ -644,11 +654,12 @@ def _build_scheduled_mime_lite_client_work(
       `tff.aggregators.MeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -693,15 +704,16 @@ def _build_scheduled_mime_lite_client_work(
     mime_state[0][optimizer_base.LEARNING_RATE_KEY] = learning_rate_fn(0)
     return mime_state
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def init_fn():
     initial_state = client_work.initialize()
-    updated_state = intrinsics.federated_map(
+    updated_state = federated_language.federated_map(
         initialize_learning_rate, initial_state
     )
-    return intrinsics.federated_zip(
-        (intrinsics.federated_value(0, placements.SERVER), updated_state)
-    )
+    return federated_language.federated_zip((
+        federated_language.federated_value(0, federated_language.SERVER),
+        updated_state,
+    ))
 
   state_type = init_fn.type_signature.result.member
 
@@ -714,17 +726,21 @@ def _build_scheduled_mime_lite_client_work(
     mime_state[0][optimizer_base.LEARNING_RATE_KEY] = updated_learning_rate
     return (updated_round_num, mime_state)
 
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       init_fn.type_signature.result,
-      computation_types.FederatedType(weights_type, placements.CLIENTS),
-      computation_types.FederatedType(data_type, placements.CLIENTS),
+      federated_language.FederatedType(
+          weights_type, federated_language.CLIENTS
+      ),
+      federated_language.FederatedType(data_type, federated_language.CLIENTS),
   )
   def next_fn(state, weights, client_data):
     round_num, mime_state = state
     output = client_work.next(mime_state, weights, client_data)
     updated_mime_state = output.state
-    outer_state = intrinsics.federated_zip((round_num, updated_mime_state))
-    updated_state = intrinsics.federated_map(update_state, outer_state)
+    outer_state = federated_language.federated_zip(
+        (round_num, updated_mime_state)
+    )
+    updated_state = federated_language.federated_map(update_state, outer_state)
     return measured_process.MeasuredProcessOutput(
         updated_state, output.result, output.measurements
     )
@@ -755,22 +771,26 @@ def build_weighted_mime_lite(
   Mime Lite algorithm on client models. The iterative process has the following
   methods inherited from `tff.learning.templates.LearningProcess`:
 
-  *   `initialize`: A `tff.Computation` with the functional type signature
+  *   `initialize`: A `federated_language.Computation` with the functional type
+  signature
       `( -> S@SERVER)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` representing the initial
       state of the server.
-  *   `next`: A `tff.Computation` with the functional type signature
+  *   `next`: A `federated_language.Computation` with the functional type
+  signature
       `(<S@SERVER, {B*}@CLIENTS> -> <L@SERVER>)` where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `{B*}@CLIENTS` represents the client datasets.
       The output `L` contains the updated server state, as well as aggregated
       metrics at the server, including client training metrics and any other
       metrics from distribution and aggregation processes.
-  *   `get_model_weights`: A `tff.Computation` with type signature `(S -> M)`,
+  *   `get_model_weights`: A `federated_language.Computation` with type
+  signature `(S -> M)`,
       where `S` is a `tff.learning.templates.LearningAlgorithmState` whose type
       matches the output of `initialize` and `next`, and `M` represents the type
       of the model weights used during training.
-  *   `set_model_weights`: A `tff.Computation` with type signature
+  *   `set_model_weights`: A `federated_language.Computation` with type
+  signature
       `(<S, M> -> S)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `M` represents the type of the model weights
@@ -830,11 +850,12 @@ def build_weighted_mime_lite(
       `tff.aggregators.MeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -880,7 +901,7 @@ def build_weighted_mime_lite(
   py_typecheck.check_type(model_aggregator, factory.WeightedAggregationFactory)
   model_update_type = model_weights_type.trainable
   model_aggregator = model_aggregator.create(
-      model_update_type, computation_types.TensorType(np.float32)
+      model_update_type, federated_language.TensorType(np.float32)
   )
   if full_gradient_aggregator is None:
     full_gradient_aggregator = mean.MeanFactory()
@@ -942,22 +963,26 @@ def build_unweighted_mime_lite(
   Mime Lite algorithm on client models. The iterative process has the following
   methods inherited from `tff.learning.templates.LearningProcess`:
 
-  *   `initialize`: A `tff.Computation` with the functional type signature
+  *   `initialize`: A `federated_language.Computation` with the functional type
+  signature
       `( -> S@SERVER)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` representing the initial
       state of the server.
-  *   `next`: A `tff.Computation` with the functional type signature
+  *   `next`: A `federated_language.Computation` with the functional type
+  signature
       `(<S@SERVER, {B*}@CLIENTS> -> <L@SERVER>)` where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `{B*}@CLIENTS` represents the client datasets.
       The output `L` contains the updated server state, as well as aggregated
       metrics at the server, including client training metrics and any other
       metrics from distribution and aggregation processes.
-  *   `get_model_weights`: A `tff.Computation` with type signature `(S -> M)`,
+  *   `get_model_weights`: A `federated_language.Computation` with type
+  signature `(S -> M)`,
       where `S` is a `tff.learning.templates.LearningAlgorithmState` whose type
       matches the output of `initialize` and `next`, and `M` represents the type
       of the model weights used during training.
-  *   `set_model_weights`: A `tff.Computation` with type signature
+  *   `set_model_weights`: A `federated_language.Computation` with type
+  signature
       `(<S, M> -> S)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `M` represents the type of the model weights
@@ -1011,11 +1036,12 @@ def build_unweighted_mime_lite(
       `tff.aggregators.UnweightedMeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -1072,22 +1098,26 @@ def build_mime_lite_with_optimizer_schedule(
   Mime Lite algorithm on client models. The iterative process has the following
   methods inherited from `tff.learning.templates.LearningProcess`:
 
-  *   `initialize`: A `tff.Computation` with the functional type signature
+  *   `initialize`: A `federated_language.Computation` with the functional type
+  signature
       `( -> S@SERVER)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` representing the initial
       state of the server.
-  *   `next`: A `tff.Computation` with the functional type signature
+  *   `next`: A `federated_language.Computation` with the functional type
+  signature
       `(<S@SERVER, {B*}@CLIENTS> -> <L@SERVER>)` where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `{B*}@CLIENTS` represents the client datasets.
       The output `L` contains the updated server state, as well as aggregated
       metrics at the server, including client training metrics and any other
       metrics from distribution and aggregation processes.
-  *   `get_model_weights`: A `tff.Computation` with type signature `(S -> M)`,
+  *   `get_model_weights`: A `federated_language.Computation` with type
+  signature `(S -> M)`,
       where `S` is a `tff.learning.templates.LearningAlgorithmState` whose type
       matches the output of `initialize` and `next`, and `M` represents the type
       of the model weights used during training.
-  *   `set_model_weights`: A `tff.Computation` with type signature
+  *   `set_model_weights`: A `federated_language.Computation` with type
+  signature
       `(<S, M> -> S)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `M` represents the type of the model weights
@@ -1151,11 +1181,12 @@ def build_mime_lite_with_optimizer_schedule(
       `tff.aggregators.MeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -1201,7 +1232,7 @@ def build_mime_lite_with_optimizer_schedule(
   py_typecheck.check_type(model_aggregator, factory.WeightedAggregationFactory)
   model_update_type = model_weights_type.trainable
   model_aggregator = model_aggregator.create(
-      model_update_type, computation_types.TensorType(np.float32)
+      model_update_type, federated_language.TensorType(np.float32)
   )
   if full_gradient_aggregator is None:
     full_gradient_aggregator = mean.MeanFactory()

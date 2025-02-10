@@ -24,6 +24,7 @@ from collections.abc import Callable
 from typing import Optional, Union
 
 from absl import logging
+import federated_language
 import numpy as np
 import tensorflow as tf
 
@@ -32,7 +33,6 @@ from tensorflow_federated.python.aggregators import factory_utils
 from tensorflow_federated.python.aggregators import mean
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.types import computation_types
 from tensorflow_federated.python.learning import client_weight_lib
 from tensorflow_federated.python.learning import loop_builder
 from tensorflow_federated.python.learning.metrics import aggregator as metric_aggregator
@@ -41,13 +41,14 @@ from tensorflow_federated.python.learning.models import functional
 from tensorflow_federated.python.learning.models import model_weights
 from tensorflow_federated.python.learning.models import variable
 from tensorflow_federated.python.learning.optimizers import optimizer as optimizer_base
+from tensorflow_federated.python.learning.optimizers import sgdm
 from tensorflow_federated.python.learning.templates import apply_optimizer_finalizer
 from tensorflow_federated.python.learning.templates import composers
 from tensorflow_federated.python.learning.templates import distributors
 from tensorflow_federated.python.learning.templates import learning_process
 from tensorflow_federated.python.learning.templates import proximal_client_work
 
-DEFAULT_SERVER_OPTIMIZER_FN = lambda: tf.keras.optimizers.SGD(learning_rate=1.0)
+DEFAULT_SERVER_OPTIMIZER_FN = sgdm.build_sgdm(learning_rate=1.0)
 
 
 def build_weighted_fed_prox(
@@ -55,12 +56,8 @@ def build_weighted_fed_prox(
         Callable[[], variable.VariableModel], functional.FunctionalModel
     ],
     proximal_strength: float,
-    client_optimizer_fn: Union[
-        optimizer_base.Optimizer, Callable[[], tf.keras.optimizers.Optimizer]
-    ],
-    server_optimizer_fn: Union[
-        optimizer_base.Optimizer, Callable[[], tf.keras.optimizers.Optimizer]
-    ] = DEFAULT_SERVER_OPTIMIZER_FN,
+    client_optimizer_fn: optimizer_base.Optimizer,
+    server_optimizer_fn: optimizer_base.Optimizer = DEFAULT_SERVER_OPTIMIZER_FN,
     client_weighting: Optional[
         client_weight_lib.ClientWeighting
     ] = client_weight_lib.ClientWeighting.NUM_EXAMPLES,
@@ -79,22 +76,26 @@ def build_weighted_fed_prox(
   The iterative process has the following methods inherited from
   `tff.learning.templates.LearningProcess`:
 
-  *   `initialize`: A `tff.Computation` with the functional type signature
+  *   `initialize`: A `federated_language.Computation` with the functional type
+  signature
       `( -> S@SERVER)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` representing the initial
       state of the server.
-  *   `next`: A `tff.Computation` with the functional type signature
+  *   `next`: A `federated_language.Computation` with the functional type
+  signature
       `(<S@SERVER, {B*}@CLIENTS> -> <L@SERVER>)` where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize`and `{B*}@CLIENTS` represents the client datasets.
       The output `L` contains the updated server state, as well as aggregated
       metrics at the server, including client training metrics and any other
       metrics from distribution and aggregation processes.
-  *   `get_model_weights`: A `tff.Computation` with type signature `(S -> M)`,
+  *   `get_model_weights`: A `federated_language.Computation` with type
+  signature `(S -> M)`,
       where `S` is a `tff.learning.templates.LearningAlgorithmState` whose type
       matches the output of `initialize` and `next`, and `M` represents the type
       of the model weights used during training.
-  *   `set_model_weights`: A `tff.Computation` with type signature
+  *   `set_model_weights`: A `federated_language.Computation` with type
+  signature
       `(<S, M> -> S)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `M` represents the type of the model weights
@@ -109,9 +110,9 @@ def build_weighted_fed_prox(
   delta is applied at the server using a server optimizer, as in the FedOpt
   framework proposed in [Reddi et al., 2021](https://arxiv.org/abs/2003.00295).
 
-  Note: The default server optimizer function is `tf.keras.optimizers.SGD`
-  with a learning rate of 1.0, which corresponds to adding the model delta to
-  the current server model. This recovers the original FedProx algorithm in
+  Note: The default server optimizer function is SGD with a learning rate of
+  1.0, which corresponds to adding the model delta to the current server model.
+  This recovers the original FedProx algorithm in
   [Li et al., 2020](https://arxiv.org/abs/1812.06127). More
   sophisticated federated averaging procedures may use different learning rates
   or server optimizers.
@@ -128,11 +129,9 @@ def build_weighted_fed_prox(
       FedProx's regularization term. When set to `0.0`, the algorithm reduces to
       FedAvg. Higher values prevent clients from moving too far from the server
       model during local training.
-    client_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a no-arg
-      callable that returns a `tf.keras.Optimizer`.
-    server_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a no-arg
-      callable that returns a `tf.keras.Optimizer`. By default, this uses
-      `tf.keras.optimizers.SGD` with a learning rate of 1.0.
+    client_optimizer_fn: A `tff.learning.optimizers.Optimizer`.
+    server_optimizer_fn: A `tff.learning.optimizers.Optimizer`. By default, this
+      uses SGD with a learning rate of 1.0.
     client_weighting: A member of `tff.learning.ClientWeighting` that specifies
       a built-in weighting method. By default, weighting by number of examples
       is used.
@@ -144,11 +143,12 @@ def build_weighted_fed_prox(
       `tff.aggregators.MeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -212,7 +212,7 @@ def build_weighted_fed_prox(
     model_aggregator = mean.MeanFactory()
   py_typecheck.check_type(model_aggregator, factory.WeightedAggregationFactory)
   aggregator = model_aggregator.create(
-      model_update_type, computation_types.TensorType(np.float32)
+      model_update_type, federated_language.TensorType(np.float32)
   )
   process_signature = aggregator.next.type_signature
   input_client_value_type = process_signature.parameter[1]  # pytype: disable=unsupported-operands
@@ -262,12 +262,8 @@ def build_unweighted_fed_prox(
         Callable[[], variable.VariableModel], functional.FunctionalModel
     ],
     proximal_strength: float,
-    client_optimizer_fn: Union[
-        optimizer_base.Optimizer, Callable[[], tf.keras.optimizers.Optimizer]
-    ],
-    server_optimizer_fn: Union[
-        optimizer_base.Optimizer, Callable[[], tf.keras.optimizers.Optimizer]
-    ] = DEFAULT_SERVER_OPTIMIZER_FN,
+    client_optimizer_fn: optimizer_base.Optimizer,
+    server_optimizer_fn: optimizer_base.Optimizer = DEFAULT_SERVER_OPTIMIZER_FN,
     model_distributor: Optional[distributors.DistributionProcess] = None,
     model_aggregator: Optional[factory.UnweightedAggregationFactory] = None,
     metrics_aggregator: types.MetricsAggregatorType = metric_aggregator.sum_then_finalize,
@@ -283,22 +279,26 @@ def build_unweighted_fed_prox(
   The iterative process has the following methods inherited from
   `tff.learning.templates.LearningProcess`:
 
-  *   `initialize`: A `tff.Computation` with the functional type signature
+  *   `initialize`: A `federated_language.Computation` with the functional type
+  signature
       `( -> S@SERVER)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` representing the initial
       state of the server.
-  *   `next`: A `tff.Computation` with the functional type signature
+  *   `next`: A `federated_language.Computation` with the functional type
+  signature
       `(<S@SERVER, {B*}@CLIENTS> -> <L@SERVER>)` where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `{B*}@CLIENTS` represents the client datasets.
       The output `L` contains the updated server state, as well as aggregated
       metrics at the server, including client training metrics and any other
       metrics from distribution and aggregation processes.
-  *   `get_model_weights`: A `tff.Computation` with type signature `(S -> M)`,
+  *   `get_model_weights`: A `federated_language.Computation` with type
+  signature `(S -> M)`,
       where `S` is a `tff.learning.templates.LearningAlgorithmState` whose type
       matches the output of `initialize` and `next`, and `M` represents the type
       of the model weights used during training.
-  *   `set_model_weights`: A `tff.Computation` with type signature
+  *   `set_model_weights`: A `federated_language.Computation` with type
+  signature
       `(<S, M> -> S)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `M` represents the type of the model weights
@@ -313,7 +313,7 @@ def build_unweighted_fed_prox(
   a server optimizer, as in the FedOpt framework proposed in
   [Reddi et al., 2021](https://arxiv.org/abs/2003.00295).
 
-  Note: The default server optimizer function is `tf.keras.optimizers.SGD`
+  Note: The default server optimizer function is SGD
   with a learning rate of 1.0, which corresponds to adding the model delta to
   the current server model. This recovers the original FedProx algorithm in
   [Li et al., 2020](https://arxiv.org/abs/1812.06127). More
@@ -332,11 +332,9 @@ def build_unweighted_fed_prox(
       FedProx's regularization term. When set to `0.0`, the algorithm reduces to
       FedAvg. Higher values prevent clients from moving too far from the server
       model during local training.
-    client_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a no-arg
-      callable that returns a `tf.keras.Optimizer`.
-    server_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a no-arg
-      callable that returns a `tf.keras.Optimizer`. By default, this uses
-      `tf.keras.optimizers.SGD` with a learning rate of 1.0.
+    client_optimizer_fn: A `tff.learning.optimizers.Optimizer`.
+    server_optimizer_fn: A `tff.learning.optimizers.Optimizer`. By default, this
+      uses SGD with a learning rate of 1.0.
     model_distributor: An optional `DistributionProcess` that broadcasts the
       model weights on the server to the clients. If set to `None`, the
       distributor is constructed via `distributors.build_broadcast_process`.
@@ -345,11 +343,12 @@ def build_unweighted_fed_prox(
       `tff.aggregators.UnweightedMeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 

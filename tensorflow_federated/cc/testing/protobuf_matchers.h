@@ -39,9 +39,10 @@
 #include <memory>
 #include <ostream>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <vector>
+
+#include "absl/strings/string_view.h"
 
 #include "google/protobuf/message.h"
 #include "google/protobuf/text_format.h"
@@ -49,6 +50,7 @@
 #include "googlemock/include/gmock/gmock.h"
 #include "googletest/include/gtest/gtest.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "google/protobuf/io/tokenizer.h"
@@ -176,8 +178,8 @@ class ProtoMatcherBase {
   // Assumes that the types actually mismatch.
   std::string DescribeTypeMismatch(const google::protobuf::Message &expected,
                                    const google::protobuf::Message &actual) const {
-    return "whose type should be " + expected.GetTypeName() +
-           " but actually is " + actual.GetTypeName();
+    return absl::StrCat("whose type should be ", expected.GetTypeName(),
+                        " but actually is ", actual.GetTypeName());
   }
 
   // Provides a string describing the difference between the two given protos.
@@ -252,7 +254,7 @@ class ProtoMatcher : public ProtoMatcherBase {
 // as a (text format) string.
 class ProtoStringMatcher : public ProtoMatcherBase {
  public:
-  explicit ProtoStringMatcher(std::string_view expected)
+  explicit ProtoStringMatcher(absl::string_view expected)
       : expected_(expected) {}
 
  private:
@@ -317,7 +319,7 @@ inline ::testing::PolymorphicMatcher<internal_proto::ProtoMatcher> EqualsProto(
   return ::testing::MakePolymorphicMatcher(internal_proto::ProtoMatcher(x));
 }
 inline ::testing::PolymorphicMatcher<internal_proto::ProtoStringMatcher>
-EqualsProto(std::string_view x) {
+EqualsProto(absl::string_view x) {
   return ::testing::MakePolymorphicMatcher(
       internal_proto::ProtoStringMatcher(x));
 }

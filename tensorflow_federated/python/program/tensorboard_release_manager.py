@@ -16,19 +16,19 @@
 import os
 from typing import Union
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 
-from tensorflow_federated.python.common_libs import py_typecheck
-from tensorflow_federated.python.program import release_manager
 from tensorflow_federated.python.program import structure_utils
-from tensorflow_federated.python.program import value_reference
 
 
 class TensorBoardReleaseManager(
-    release_manager.ReleaseManager[release_manager.ReleasableStructure, int]
+    federated_language.program.ReleaseManager[
+        federated_language.program.ReleasableStructure, int
+    ]
 ):
-  """A `tff.program.ReleaseManager` that releases values to TensorBoard.
+  """A `federated_language.program.ReleaseManager` that releases values to TensorBoard.
 
   A `tff.program.TensorBoardReleaseManager` is a utility for releasing values
   from a federated program to TensorBoard and is used to release values from
@@ -58,7 +58,6 @@ class TensorBoardReleaseManager(
     Raises:
       ValueError: If `summary_dir` is an empty string.
     """
-    py_typecheck.check_type(summary_dir, (str, os.PathLike))
     if not summary_dir:
       raise ValueError('Expected `summary_dir` to not be an empty string.')
 
@@ -69,23 +68,23 @@ class TensorBoardReleaseManager(
     self._summary_writer = tf.summary.create_file_writer(summary_dir)
 
   async def release(
-      self, value: release_manager.ReleasableStructure, key: int
+      self, value: federated_language.program.ReleasableStructure, key: int
   ) -> None:
     """Releases `value` from a federated program.
 
     Args:
-      value: A `tff.program.ReleasableStructure` to release.
+      value: A `federated_language.program.ReleasableStructure` to release.
       key: A integer used to reference the released `value`; `key` represents a
         step in a federated program.
     """
-    py_typecheck.check_type(key, (int, np.integer))
-
-    materialized_value = await value_reference.materialize_value(value)
+    materialized_value = await federated_language.program.materialize_value(
+        value
+    )
     flattened_value = structure_utils.flatten_with_name(materialized_value)
 
     def _normalize(
-        value: value_reference.MaterializedValue,
-    ) -> value_reference.MaterializedValue:
+        value: federated_language.program.MaterializedValue,
+    ) -> federated_language.program.MaterializedValue:
       if isinstance(value, tf.data.Dataset):
         value = list(value)
       return value

@@ -131,8 +131,12 @@ class _AdafactorOptimizer(
       return tf.math.sqrt(tf.math.reduce_mean(tf.math.square(t)))
 
     def update(
-        state: _AdaFactorMoment, weight: tf.Tensor, gradient: tf.Tensor
+        state: _AdaFactorMoment,
+        weight: tf.Tensor,
+        gradient: Union[tf.Tensor, None],
     ) -> tuple[_AdaFactorMoment, tf.Tensor]:
+      if gradient is None:
+        return state, weight
       alpha_t = tf.math.maximum(epsilon_2, _rms(weight)) * rho_t
       regulated_gradient_squared = tf.math.square(gradient) + epsilon_1
       beta_2_t = 1.0 - tf.math.pow(local_step, beta_2_decay)
@@ -158,20 +162,24 @@ class _AdafactorOptimizer(
       new_weight = weight + -alpha_t * u_t_hat
       return new_moment, new_weight
 
-    new_moments, new_weights = zip(
-        *tuple(
-            update(moment, weight, gradient)
-            for moment, weight, gradient in zip(
-                state['moments'],
-                tf.nest.flatten(weights),
-                tf.nest.flatten(gradients),
-            )
-        )
-    )
-    new_weights = tf.nest.pack_sequence_as(weights, new_weights)
+    if not tf.nest.flatten(weights):
+      new_moments = state['moments']
+      new_weights = weights
+    else:
+      new_moments, new_weights = zip(
+          *tuple(
+              update(moment, weight, gradient)
+              for moment, weight, gradient in zip(
+                  state['moments'],
+                  tf.nest.flatten(weights),
+                  tf.nest.flatten(gradients),
+              )
+          )
+      )
+      new_weights = tf.nest.pack_sequence_as(weights, new_weights)
 
     return {
-        'steps': local_step + 1,
+        'steps': local_step,
         'moments': new_moments,
         'hparams': hparams,
     }, new_weights
@@ -184,7 +192,7 @@ class _AdafactorOptimizer(
   ) -> optimizer.State:
     # We use `tff.structure.update_struct` (rather than something like
     # `copy.deepcopy`) to ensure that this can be called within a
-    # `tff.Computation`.
+    # `federated_language.Computation`.
     return structure.update_struct(state['hparams'], **hparams)
 
 

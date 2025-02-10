@@ -14,6 +14,7 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import federated_language
 import numpy as np
 import tensorflow_federated as tff
 
@@ -21,29 +22,34 @@ _NUM_EXPLICIT_SUBROUNDS = 50
 
 
 def build_sum_client_arg_computation(
-    server_arg_type: tff.FederatedType,
-    clients_arg_type: tff.FederatedType,
-) -> tff.Computation:
-  @tff.federated_computation(server_arg_type, clients_arg_type)
+    server_arg_type: federated_language.FederatedType,
+    clients_arg_type: federated_language.FederatedType,
+) -> federated_language.Computation:
+
+  @federated_language.federated_computation(server_arg_type, clients_arg_type)
   def up_to_merge(server_arg, client_arg):
     del server_arg  # Unused
-    return tff.federated_sum(client_arg)
+    return federated_language.federated_sum(client_arg)
 
   return up_to_merge
 
 
-def build_noarg_count_clients_computation() -> tff.Computation:
-  @tff.federated_computation()
+def build_noarg_count_clients_computation() -> federated_language.Computation:
+
+  @federated_language.federated_computation()
   def up_to_merge():
-    return tff.federated_sum(tff.federated_value(1, tff.CLIENTS))
+    return federated_language.federated_sum(
+        federated_language.federated_value(1, federated_language.CLIENTS)
+    )
 
   return up_to_merge
 
 
 def build_whimsy_merge_computation(
-    arg_type: tff.Type,
-) -> tff.Computation:
-  @tff.federated_computation(arg_type, arg_type)
+    arg_type: federated_language.Type,
+) -> federated_language.Computation:
+
+  @federated_language.federated_computation(arg_type, arg_type)
   def merge(arg0, arg1):
     del arg1  # Unused
     return arg0
@@ -52,8 +58,8 @@ def build_whimsy_merge_computation(
 
 
 def build_sum_merge_computation(
-    arg_type: tff.Type,
-) -> tff.Computation:
+    arg_type: federated_language.Type,
+) -> federated_language.Computation:
 
   @tff.tensorflow.computation(arg_type, arg_type)
   def merge(arg0, arg1):
@@ -63,13 +69,16 @@ def build_sum_merge_computation(
 
 
 def build_whimsy_after_merge_computation(
-    original_arg_type: tff.Type,
-    merge_result_type: tff.Type,
-) -> tff.Computation:
+    original_arg_type: federated_language.Type,
+    merge_result_type: federated_language.Type,
+) -> federated_language.Computation:
   if original_arg_type is not None:
 
-    @tff.federated_computation(
-        original_arg_type, tff.FederatedType(merge_result_type, tff.SERVER)
+    @federated_language.federated_computation(
+        original_arg_type,
+        federated_language.FederatedType(
+            merge_result_type, federated_language.SERVER
+        ),
     )
     def after_merge(original_arg, merge_result):
       del merge_result  # Unused
@@ -77,7 +86,11 @@ def build_whimsy_after_merge_computation(
 
   else:
 
-    @tff.federated_computation(tff.FederatedType(merge_result_type, tff.SERVER))
+    @federated_language.federated_computation(
+        federated_language.FederatedType(
+            merge_result_type, federated_language.SERVER
+        )
+    )
     def after_merge(merge_result):
       return merge_result
 
@@ -85,12 +98,15 @@ def build_whimsy_after_merge_computation(
 
 
 def build_return_merge_result_computation(
-    original_arg_type: tff.Type,
-    merge_result_type: tff.Type,
-) -> tff.Computation:
+    original_arg_type: federated_language.Type,
+    merge_result_type: federated_language.Type,
+) -> federated_language.Computation:
 
-  @tff.federated_computation(
-      original_arg_type, tff.FederatedType(merge_result_type, tff.SERVER)
+  @federated_language.federated_computation(
+      original_arg_type,
+      federated_language.FederatedType(
+          merge_result_type, federated_language.SERVER
+      ),
   )
   def after_merge(original_arg, merge_result):
     del original_arg  # Unused
@@ -100,10 +116,14 @@ def build_return_merge_result_computation(
 
 
 def build_return_merge_result_with_no_first_arg_computation(
-    merge_result_type: tff.Type,
-) -> tff.Computation:
+    merge_result_type: federated_language.Type,
+) -> federated_language.Computation:
 
-  @tff.federated_computation(tff.FederatedType(merge_result_type, tff.SERVER))
+  @federated_language.federated_computation(
+      federated_language.FederatedType(
+          merge_result_type, federated_language.SERVER
+      )
+  )
   def after_merge(merge_result):
     return merge_result
 
@@ -111,20 +131,25 @@ def build_return_merge_result_with_no_first_arg_computation(
 
 
 def build_sum_merge_with_first_arg_computation(
-    original_arg_type: tff.Type,
-    merge_result_type: tff.Type,
-) -> tff.Computation:
+    original_arg_type: federated_language.Type,
+    merge_result_type: federated_language.Type,
+) -> federated_language.Computation:
   """Assumes original_arg_type is federated, and compatible with summing with merge_result_type."""
 
   @tff.tensorflow.computation(original_arg_type[0].member, merge_result_type)
   def add(x, y):
     return x + y
 
-  @tff.federated_computation(
-      original_arg_type, tff.FederatedType(merge_result_type, tff.SERVER)
+  @federated_language.federated_computation(
+      original_arg_type,
+      federated_language.FederatedType(
+          merge_result_type, federated_language.SERVER
+      ),
   )
   def after_merge(original_arg, merge_result):
-    return tff.federated_map(add, (original_arg[0], merge_result))
+    return federated_language.federated_map(
+        add, (original_arg[0], merge_result)
+    )
 
   return after_merge
 
@@ -133,15 +158,17 @@ class MergeableCompFormTest(absltest.TestCase):
 
   def test_raises_mismatched_up_to_merge_and_merge(self):
     up_to_merge = build_sum_client_arg_computation(
-        tff.FederatedType(np.int32, tff.SERVER),
-        tff.FederatedType(np.int32, tff.CLIENTS),
+        federated_language.FederatedType(np.int32, federated_language.SERVER),
+        federated_language.FederatedType(np.int32, federated_language.CLIENTS),
     )
 
     bad_merge = build_whimsy_merge_computation(np.float32)
 
-    @tff.federated_computation(
+    @federated_language.federated_computation(
         up_to_merge.type_signature.parameter,
-        tff.FederatedType(bad_merge.type_signature.result, tff.SERVER),
+        federated_language.FederatedType(
+            bad_merge.type_signature.result, federated_language.SERVER
+        ),
     )
     def after_merge(x, y):
       return (x, y)
@@ -153,18 +180,20 @@ class MergeableCompFormTest(absltest.TestCase):
 
   def test_raises_merge_computation_not_assignable_result(self):
     up_to_merge = build_sum_client_arg_computation(
-        tff.FederatedType(np.int32, tff.SERVER),
-        tff.FederatedType(np.int32, tff.CLIENTS),
+        federated_language.FederatedType(np.int32, federated_language.SERVER),
+        federated_language.FederatedType(np.int32, federated_language.CLIENTS),
     )
 
-    @tff.federated_computation(np.int32, np.int32)
+    @federated_language.federated_computation(np.int32, np.int32)
     def bad_merge(x, y):
       del x, y  # Unused
       return 1.0  # of type float.
 
-    @tff.federated_computation(
+    @federated_language.federated_computation(
         up_to_merge.type_signature.parameter,
-        tff.FederatedType(bad_merge.type_signature.result, tff.SERVER),
+        federated_language.FederatedType(
+            bad_merge.type_signature.result, federated_language.SERVER
+        ),
     )
     def after_merge(x, y):
       return (x, y)
@@ -176,14 +205,16 @@ class MergeableCompFormTest(absltest.TestCase):
 
   def test_raises_no_top_level_argument_in_after_agg(self):
     up_to_merge = build_sum_client_arg_computation(
-        tff.FederatedType(np.int32, tff.SERVER),
-        tff.FederatedType(np.int32, tff.CLIENTS),
+        federated_language.FederatedType(np.int32, federated_language.SERVER),
+        federated_language.FederatedType(np.int32, federated_language.CLIENTS),
     )
 
     merge = build_whimsy_merge_computation(np.int32)
 
-    @tff.federated_computation(
-        tff.FederatedType(merge.type_signature.result, tff.SERVER)
+    @federated_language.federated_computation(
+        federated_language.FederatedType(
+            merge.type_signature.result, federated_language.SERVER
+        )
     )
     def bad_after_merge(x):
       return x
@@ -194,7 +225,10 @@ class MergeableCompFormTest(absltest.TestCase):
       )
 
   def test_raises_up_to_merge_returns_non_server_placed_result(self):
-    @tff.federated_computation(tff.FederatedType(np.int32, tff.SERVER))
+
+    @federated_language.federated_computation(
+        federated_language.FederatedType(np.int32, federated_language.SERVER)
+    )
     def bad_up_to_merge(x):
       # Returns non SERVER-placed result.
       return x, x
@@ -212,20 +246,22 @@ class MergeableCompFormTest(absltest.TestCase):
 
   def test_raises_with_aggregation_in_after_agg(self):
     up_to_merge = build_sum_client_arg_computation(
-        tff.FederatedType(np.int32, tff.SERVER),
-        tff.FederatedType(np.int32, tff.CLIENTS),
+        federated_language.FederatedType(np.int32, federated_language.SERVER),
+        federated_language.FederatedType(np.int32, federated_language.CLIENTS),
     )
 
     merge = build_whimsy_merge_computation(np.int32)
 
-    @tff.federated_computation(
+    @federated_language.federated_computation(
         up_to_merge.type_signature.parameter,
-        tff.FederatedType(merge.type_signature.result, tff.SERVER),
+        federated_language.FederatedType(
+            merge.type_signature.result, federated_language.SERVER
+        ),
     )
     def after_merge_with_sum(original_arg, merged_arg):
       del merged_arg  # Unused
       # Second element in original arg is the clients-placed value.
-      return tff.federated_sum(original_arg[1])
+      return federated_language.federated_sum(original_arg[1])
 
     with self.assertRaises(ValueError):
       tff.framework.MergeableCompForm(
@@ -234,8 +270,8 @@ class MergeableCompFormTest(absltest.TestCase):
 
   def test_passes_with_correct_signatures(self):
     up_to_merge = build_sum_client_arg_computation(
-        tff.FederatedType(np.int32, tff.SERVER),
-        tff.FederatedType(np.int32, tff.CLIENTS),
+        federated_language.FederatedType(np.int32, federated_language.SERVER),
+        federated_language.FederatedType(np.int32, federated_language.CLIENTS),
     )
     merge = build_whimsy_merge_computation(np.int32)
     after_merge = build_whimsy_after_merge_computation(
@@ -315,8 +351,8 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
       self, arg, num_subrounds, num_contexts
   ):
     up_to_merge = build_sum_client_arg_computation(
-        tff.FederatedType(np.int32, tff.SERVER),
-        tff.FederatedType(np.int32, tff.CLIENTS),
+        federated_language.FederatedType(np.int32, federated_language.SERVER),
+        federated_language.FederatedType(np.int32, federated_language.CLIENTS),
     )
     merge = build_whimsy_merge_computation(np.int32)
     after_merge = build_whimsy_after_merge_computation(
@@ -329,7 +365,7 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
     )
     contexts = []
     for _ in range(num_contexts):
-      context = tff.framework.AsyncExecutionContext(
+      context = federated_language.framework.AsyncExecutionContext(
           executor_fn=tff.framework.local_cpp_executor_factory(
               max_concurrent_computation_calls=1
           ),
@@ -344,7 +380,7 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
     # We preemptively package as a struct to work around shortcircuiting in
     # type_to_py_container in a non-Struct argument case.
     arg = tff.structure.Struct.unnamed(*arg)
-    expected_result = tff.types.type_to_py_container(
+    expected_result = federated_language.framework.type_to_py_container(
         arg, after_merge.type_signature.result
     )
     result = mergeable_comp_context.invoke(mergeable_comp_form, arg)
@@ -394,8 +430,8 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
       self, arg, expected_sum, num_subrounds
   ):
     up_to_merge = build_sum_client_arg_computation(
-        tff.FederatedType(np.int32, tff.SERVER),
-        tff.FederatedType(np.int32, tff.CLIENTS),
+        federated_language.FederatedType(np.int32, federated_language.SERVER),
+        federated_language.FederatedType(np.int32, federated_language.CLIENTS),
     )
     merge = build_sum_merge_computation(np.int32)
     after_merge = build_return_merge_result_computation(
@@ -407,7 +443,7 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
     )
     contexts = []
     for _ in range(5):
-      context = tff.framework.AsyncExecutionContext(
+      context = federated_language.framework.AsyncExecutionContext(
           executor_fn=tff.framework.local_cpp_executor_factory(
               max_concurrent_computation_calls=1
           ),
@@ -420,7 +456,7 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
         contexts, num_subrounds=num_subrounds
     )
 
-    expected_result = tff.types.type_to_py_container(
+    expected_result = federated_language.framework.type_to_py_container(
         expected_sum, after_merge.type_signature.result
     )
     result = mergeable_comp_context.invoke(mergeable_comp_form, arg)
@@ -450,8 +486,8 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
   )
   def test_computes_sum_of_all_values(self, arg, expected_sum, num_subrounds):
     up_to_merge = build_sum_client_arg_computation(
-        tff.FederatedType(np.int32, tff.SERVER),
-        tff.FederatedType(np.int32, tff.CLIENTS),
+        federated_language.FederatedType(np.int32, federated_language.SERVER),
+        federated_language.FederatedType(np.int32, federated_language.CLIENTS),
     )
     merge = build_sum_merge_computation(np.int32)
     after_merge = build_sum_merge_with_first_arg_computation(
@@ -463,7 +499,7 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
     )
     contexts = []
     for _ in range(1):
-      context = tff.framework.AsyncExecutionContext(
+      context = federated_language.framework.AsyncExecutionContext(
           executor_fn=tff.framework.local_cpp_executor_factory(
               max_concurrent_computation_calls=1
           ),
@@ -476,7 +512,7 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
         contexts, num_subrounds=num_subrounds
     )
 
-    expected_result = tff.types.type_to_py_container(
+    expected_result = federated_language.framework.type_to_py_container(
         expected_sum, after_merge.type_signature.result
     )
     result = mergeable_comp_context.invoke(mergeable_comp_form, arg)
@@ -500,7 +536,7 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
     )
     contexts = []
     for _ in range(num_executors):
-      context = tff.framework.AsyncExecutionContext(
+      context = federated_language.framework.AsyncExecutionContext(
           executor_fn=tff.framework.local_cpp_executor_factory(
               default_num_clients=int(num_clients / num_executors),
               max_concurrent_computation_calls=1,
@@ -519,12 +555,13 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
     self.assertEqual(result, expected_result)
 
   def test_invoke_raises_computation_no_compiler(self):
-    @tff.federated_computation()
+
+    @federated_language.federated_computation()
     def return_one():
       return 1
 
     factory = tff.framework.local_cpp_executor_factory()
-    context = tff.framework.AsyncExecutionContext(
+    context = federated_language.framework.AsyncExecutionContext(
         executor_fn=factory,
         transform_args=tff.tensorflow.transform_args,
         transform_result=tff.tensorflow.transform_result,
@@ -535,12 +572,13 @@ class MergeableCompExecutionContextTest(parameterized.TestCase):
       context.invoke(return_one)
 
   def test_invoke_raises_computation_not_compiled_to_mergeable_comp_form(self):
-    @tff.federated_computation()
+
+    @federated_language.federated_computation()
     def return_one():
       return 1
 
     factory = tff.framework.local_cpp_executor_factory()
-    context = tff.framework.AsyncExecutionContext(
+    context = federated_language.framework.AsyncExecutionContext(
         executor_fn=factory,
         transform_args=tff.tensorflow.transform_args,
         transform_result=tff.tensorflow.transform_result,

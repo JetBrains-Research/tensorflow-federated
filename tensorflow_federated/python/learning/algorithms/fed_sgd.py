@@ -25,6 +25,7 @@ import collections
 from collections.abc import Callable, Mapping
 from typing import Any, Optional, Union
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 
@@ -32,10 +33,7 @@ from tensorflow_federated.python.aggregators import factory
 from tensorflow_federated.python.aggregators import mean
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
+from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_types
 from tensorflow_federated.python.core.templates import measured_process
 from tensorflow_federated.python.learning import loop_builder
 from tensorflow_federated.python.learning import tensor_utils
@@ -45,6 +43,7 @@ from tensorflow_federated.python.learning.models import functional
 from tensorflow_federated.python.learning.models import model_weights as model_weights_lib
 from tensorflow_federated.python.learning.models import variable
 from tensorflow_federated.python.learning.optimizers import optimizer as optimizer_base
+from tensorflow_federated.python.learning.optimizers import sgdm
 from tensorflow_federated.python.learning.templates import apply_optimizer_finalizer
 from tensorflow_federated.python.learning.templates import client_works
 from tensorflow_federated.python.learning.templates import composers
@@ -149,10 +148,11 @@ def _build_fed_sgd_client_work(
       pre-constructed model each call will result in an error.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -166,13 +166,13 @@ def _build_fed_sgd_client_work(
     metrics_aggregation_fn = metrics_aggregator(
         model.metric_finalizers(),
     )
-  element_type = computation_types.tensorflow_to_type(model.input_spec)
-  data_type = computation_types.SequenceType(element_type)
+  element_type = tensorflow_types.to_type(model.input_spec)
+  data_type = federated_language.SequenceType(element_type)
   weights_type = model_weights_lib.weights_type_from_model(model)
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def init_fn():
-    return intrinsics.federated_value((), placements.SERVER)
+    return federated_language.federated_value((), federated_language.SERVER)
 
   @tensorflow_computation.tf_computation(weights_type, data_type)
   def client_update_computation(initial_model_weights, dataset):
@@ -181,17 +181,19 @@ def _build_fed_sgd_client_work(
     )
     return client_update(initial_model_weights, dataset)
 
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       init_fn.type_signature.result,
-      computation_types.FederatedType(weights_type, placements.CLIENTS),
-      computation_types.FederatedType(data_type, placements.CLIENTS),
+      federated_language.FederatedType(
+          weights_type, federated_language.CLIENTS
+      ),
+      federated_language.FederatedType(data_type, federated_language.CLIENTS),
   )
   def next_fn(state, model_weights, client_data):
-    client_result, model_outputs = intrinsics.federated_map(
+    client_result, model_outputs = federated_language.federated_map(
         client_update_computation, (model_weights, client_data)
     )
     train_metrics = metrics_aggregation_fn(model_outputs)
-    measurements = intrinsics.federated_zip(
+    measurements = federated_language.federated_zip(
         collections.OrderedDict(train=train_metrics)
     )
     return measured_process.MeasuredProcessOutput(
@@ -320,10 +322,11 @@ def _build_functional_fed_sgd_client_work(
     model: A `tff.learning.models.FunctionalModel` to train.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -331,8 +334,8 @@ def _build_functional_fed_sgd_client_work(
     A `tff.learning.templates.ClientWorkProcess`.
   """
   py_typecheck.check_type(model, functional.FunctionalModel)
-  element_type = computation_types.tensorflow_to_type(model.input_spec)
-  data_type = computation_types.SequenceType(element_type)
+  element_type = tensorflow_types.to_type(model.input_spec)
+  data_type = federated_language.SequenceType(element_type)
 
   def ndarray_to_tensorspec(ndarray):
     return tf.TensorSpec(shape=ndarray.shape, dtype=ndarray.dtype)
@@ -343,11 +346,11 @@ def _build_functional_fed_sgd_client_work(
       tuple(ndarray_to_tensorspec(w) for w in trainable_weights),
       tuple(ndarray_to_tensorspec(w) for w in non_trainable_weights),
   )
-  weights_type = computation_types.tensorflow_to_type(weights_spec)
+  weights_type = tensorflow_types.to_type(weights_spec)
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def init_fn():
-    return intrinsics.federated_value((), placements.SERVER)
+    return federated_language.federated_value((), federated_language.SERVER)
 
   @tensorflow_computation.tf_computation(weights_type, data_type)
   def client_update_computation(initial_model_weights, dataset):
@@ -356,20 +359,22 @@ def _build_functional_fed_sgd_client_work(
     )
     return client_update(initial_model_weights, dataset)
 
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       init_fn.type_signature.result,
-      computation_types.FederatedType(weights_type, placements.CLIENTS),
-      computation_types.FederatedType(data_type, placements.CLIENTS),
+      federated_language.FederatedType(
+          weights_type, federated_language.CLIENTS
+      ),
+      federated_language.FederatedType(data_type, federated_language.CLIENTS),
   )
   def next_fn(state, model_weights, client_data):
-    client_result, unfinalized_metrics = intrinsics.federated_map(
+    client_result, unfinalized_metrics = federated_language.federated_map(
         client_update_computation, (model_weights, client_data)
     )
     metrics_aggregation_fn = metrics_aggregator(
         model.finalize_metrics, unfinalized_metrics.type_signature.member
     )
     train_metrics = metrics_aggregation_fn(unfinalized_metrics)
-    measurements = intrinsics.federated_zip(
+    measurements = federated_language.federated_zip(
         collections.OrderedDict(train=train_metrics)
     )
     return measured_process.MeasuredProcessOutput(
@@ -379,16 +384,14 @@ def _build_functional_fed_sgd_client_work(
   return client_works.ClientWorkProcess(init_fn, next_fn)
 
 
-DEFAULT_SERVER_OPTIMIZER_FN = lambda: tf.keras.optimizers.SGD(learning_rate=0.1)
+DEFAULT_SERVER_OPTIMIZER_FN = sgdm.build_sgdm(learning_rate=0.1)
 
 
 def build_fed_sgd(
     model_fn: Union[
         Callable[[], variable.VariableModel], functional.FunctionalModel
     ],
-    server_optimizer_fn: Union[
-        optimizer_base.Optimizer, Callable[[], tf.keras.optimizers.Optimizer]
-    ] = DEFAULT_SERVER_OPTIMIZER_FN,
+    server_optimizer_fn: optimizer_base.Optimizer = DEFAULT_SERVER_OPTIMIZER_FN,
     model_distributor: Optional[distributors.DistributionProcess] = None,
     model_aggregator: Optional[factory.WeightedAggregationFactory] = None,
     metrics_aggregator: Optional[types.MetricsAggregatorType] = None,
@@ -400,10 +403,11 @@ def build_fed_sgd(
   federated SGD on client models. The learning process has the following methods
   inherited from `tff.learning.templates.LearningProcess`:
 
-  *   `initialize`: A `tff.Computation` with type signature `( -> S@SERVER)`,
+  *   `initialize`: A `federated_language.Computation` with type signature `( ->
+  S@SERVER)`,
       where `S` is a `tff.learning.templates.LearningAlgorithmState`
       representing the initial state of the server.
-  *   `next`: A `tff.Computation` with type signature
+  *   `next`: A `federated_language.Computation` with type signature
       `(<S@SERVER, {B*}@CLIENTS> -> <S@SERVER, T@SERVER>)` where `S` is a
       `LearningAlgorithmState` whose type matches that of the output
       of `initialize`, and `{B*}@CLIENTS` represents the client datasets, where
@@ -411,11 +415,13 @@ def build_fed_sgd(
       `LearningAlgorithmState` representing the updated server state and the
       metrics during client training and any other metrics from broadcast and
       aggregation processes.
-  *   `get_model_weights`: A `tff.Computation` with type signature `(S -> M)`,
+  *   `get_model_weights`: A `federated_language.Computation` with type
+  signature `(S -> M)`,
       where `S` is a `tff.learning.templates.LearningAlgorithmState` whose type
       matches the output of `initialize` and `next`, and `M` represents the type
       of the model weights used during training.
-  *   `set_model_weights`: A `tff.Computation` with type signature
+  *   `set_model_weights`: A `federated_language.Computation` with type
+  signature
       `(<S, M> -> S)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `M` represents the type of the model weights
@@ -425,8 +431,7 @@ def build_fed_sgd(
   a distributor. Each client sums the gradients for each batch in its local
   dataset (without updating its model) to calculate, and averages the gradients
   based on their number of examples. These average gradients are then aggregated
-  at the server, and are applied at the server using a
-  `tf.keras.optimizers.Optimizer`.
+  at the server, and are applied at the server using an optimizer.
 
   This implements the original FedSGD algorithm in [McMahan et al.,
   2017](https://arxiv.org/abs/1602.05629).
@@ -439,9 +444,8 @@ def build_fed_sgd(
       The model must be constructed entirely from scratch on each invocation,
       returning the same pre-constructed model each call will result in an
       error.
-    server_optimizer_fn: A `tff.learning.optimizers.Optimizer`, or a no-arg
-      callable that returns a `tf.keras.Optimizer`. The optimizer is used to
-      apply client updates to the server model.
+    server_optimizer_fn: A `tff.learning.optimizers.Optimizer` used to apply
+      client updates to the server model.
     model_distributor: An optional `DistributionProcess` that distributes the
       model weights on the server to the clients. If set to `None`, the
       distributor is constructed via `distributors.build_broadcast_process`.
@@ -450,10 +454,11 @@ def build_fed_sgd(
       `tff.aggregators.MeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -497,7 +502,7 @@ def build_fed_sgd(
   if model_aggregator is None:
     model_aggregator = mean.MeanFactory()
   aggregator = model_aggregator.create(
-      model_update_type, computation_types.TensorType(np.float32)
+      model_update_type, federated_language.TensorType(np.float32)
   )
 
   if metrics_aggregator is None:

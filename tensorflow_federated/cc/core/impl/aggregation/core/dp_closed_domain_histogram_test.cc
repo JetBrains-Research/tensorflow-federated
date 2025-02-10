@@ -15,6 +15,7 @@
  */
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_closed_domain_histogram.h"
 
+#include <cmath>
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
@@ -32,6 +33,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_composite_key_combiner.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/dp_fedsql_constants.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/intrinsic.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_string_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/mutable_vector_data.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/tensor.pb.h"
@@ -46,6 +48,7 @@ namespace tensorflow_federated {
 namespace aggregation {
 namespace {
 
+using ::testing::Eq;
 using ::testing::HasSubstr;
 using testing::TestWithParam;
 
@@ -102,15 +105,12 @@ std::vector<Tensor> CreateTopLevelParameters(EpsilonType epsilon,
 
   // First tensor contains the names of keys
   int64_t num_keys = key_types.size();
-  MutableVectorData<string_view> key_names;
+  auto key_names = std::make_unique<MutableStringData>(num_keys);
   for (int i = 0; i < num_keys; i++) {
-    key_names.push_back(absl::StrCat("key", i));
+    key_names->Add(absl::StrCat("key", i));
   }
   parameters.push_back(
-      Tensor::Create(DT_STRING, {num_keys},
-                     std::make_unique<MutableVectorData<string_view>>(
-                         std::move(key_names)))
-          .value());
+      Tensor::Create(DT_STRING, {num_keys}, std::move(key_names)).value());
 
   // The ith tensor contains the domain of values that the ith key can take.
   for (auto& dtype : key_types) {
@@ -453,14 +453,14 @@ TEST(DPClosedDomainHistogramTest, NoiselessReport_OneKey) {
       Tensor::Create(DT_STRING, {2}, CreateTestData<string_view>({"c", "a"}))
           .value();
   Tensor value1 =
-      Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({1, 8})).value();
+      Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({1, 2})).value();
   auto acc_status = agg->Accumulate({&key1, &value1});
   TFF_EXPECT_OK(acc_status);
   Tensor key2 =
       Tensor::Create(DT_STRING, {1}, CreateTestData<string_view>({"a"}))
           .value();
   Tensor value2 =
-      Tensor::Create(DT_INT64, {1}, CreateTestData<int64_t>({-3})).value();
+      Tensor::Create(DT_INT64, {1}, CreateTestData<int64_t>({3})).value();
   acc_status = agg->Accumulate({&key2, &value2});
   TFF_EXPECT_OK(acc_status);
 
@@ -491,7 +491,7 @@ TEST(DPClosedDomainHistogramTest, NoiselessReport_TwoKeys) {
   Tensor key1b =
       Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({1, 2})).value();
   Tensor value1 =
-      Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({1, 8})).value();
+      Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({1, 2})).value();
   auto acc_status = agg->Accumulate({&key1a, &key1b, &value1});
   TFF_EXPECT_OK(acc_status);
   Tensor key2a =
@@ -500,7 +500,7 @@ TEST(DPClosedDomainHistogramTest, NoiselessReport_TwoKeys) {
   Tensor key2b =
       Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({0, 2})).value();
   Tensor value2 =
-      Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({-3, -3})).value();
+      Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({3, 3})).value();
   acc_status = agg->Accumulate({&key2a, &key2b, &value2});
   TFF_EXPECT_OK(acc_status);
 
@@ -518,9 +518,9 @@ TEST(DPClosedDomainHistogramTest, NoiselessReport_TwoKeys) {
   // second key: numbers cycle as 0, 0, 0, 1, 1, 1, 2, 2, 2
   EXPECT_THAT(report[1], IsTensor<int64_t>({9}, {0, 0, 0, 1, 1, 1, 2, 2, 2}));
 
-  // Report should map a0 to -3, c1 to 1, a2 to 5 = 8-3, and all else to 0.
+  // Report should map a0 to 3, c1 to 1, a2 to 5 = 2+3, and all else to 0.
   // (a0 is the composite key at index 0, c1 is at index 5, a2 is at index 6)
-  EXPECT_THAT(report[2], IsTensor<int64_t>({9}, {-3, 0, 0, 0, 0, 1, 5, 0, 0}));
+  EXPECT_THAT(report[2], IsTensor<int64_t>({9}, {3, 0, 0, 0, 0, 1, 5, 0, 0}));
 }
 
 // Same as above except we do not output the key that takes numerical values.
@@ -543,7 +543,7 @@ TEST(DPClosedDomainHistogramTest, NoiselessReport_TwoKeys_DropSecondKey) {
   Tensor key1b =
       Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({1, 2})).value();
   Tensor value1 =
-      Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({1, 8})).value();
+      Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({1, 2})).value();
   auto acc_status = agg->Accumulate({&key1a, &key1b, &value1});
   TFF_EXPECT_OK(acc_status);
   Tensor key2a =
@@ -552,7 +552,7 @@ TEST(DPClosedDomainHistogramTest, NoiselessReport_TwoKeys_DropSecondKey) {
   Tensor key2b =
       Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({0, 2})).value();
   Tensor value2 =
-      Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({-3, -3})).value();
+      Tensor::Create(DT_INT64, {2}, CreateTestData<int64_t>({3, 3})).value();
   acc_status = agg->Accumulate({&key2a, &key2b, &value2});
   TFF_EXPECT_OK(acc_status);
 
@@ -567,16 +567,16 @@ TEST(DPClosedDomainHistogramTest, NoiselessReport_TwoKeys_DropSecondKey) {
   EXPECT_THAT(report[0], IsTensor<string_view>({9}, {"a", "b", "c", "a", "b",
                                                      "c", "a", "b", "c"}));
 
-  // Report should map a0 to -3, c1 to 1, a2 to 5 = 8-3, and all else to 0.
+  // Report should map a0 to 3, c1 to 1, a2 to 5 = 2+3, and all else to 0.
   // (a0 is the composite key at index 0, c1 is at index 5, a2 is at index 6)
-  EXPECT_THAT(report[1], IsTensor<int64_t>({9}, {-3, 0, 0, 0, 0, 1, 5, 0, 0}));
+  EXPECT_THAT(report[1], IsTensor<int64_t>({9}, {3, 0, 0, 0, 0, 1, 5, 0, 0}));
 }
 
-// Third: Check that noise is added. the noised sum should not be the same as
-// the unnoised sum. The chance of a false negative shrinks with epsilon.
+// Third: Check that noise is added. A noised sum should not be the same as
+// the unnoised sum; as epsilon decreases, the scale of noise will increase.
 TEST(DPClosedDomainHistogramTest, NoiseAddedForSmallEpsilons) {
   Intrinsic intrinsic =
-      CreateIntrinsic<int32_t, int64_t>(/*epsilon=*/0.05,
+      CreateIntrinsic<int32_t, int64_t>(/*epsilon=*/0.01,
                                         /*delta=*/1e-8,
                                         /*l0_bound=*/2,
                                         /*linfinity_bound=*/1);
@@ -597,6 +597,9 @@ TEST(DPClosedDomainHistogramTest, NoiseAddedForSmallEpsilons) {
   auto report = std::move(*aggregator).Report();
   EXPECT_THAT(report, IsOk());
 
+  // The report should encode the following noisy histogram
+  // {a: num_inputs + noise, b: num_inputs + noise, c: 0 + noise}
+
   // There must be 2 columns, one for keys and one for aggregated values.
   ASSERT_EQ(report->size(), 2);
 
@@ -605,11 +608,50 @@ TEST(DPClosedDomainHistogramTest, NoiseAddedForSmallEpsilons) {
   // There must be 3 rows, one per key (a, b, c)
   ASSERT_EQ(values.size(), 3);
 
-  // We expect that there is some perturbation in the output.
-  // The values for a and b should be num_inputs +/- noise, while the value for
-  // c should be 0 +/- noise.
-  EXPECT_TRUE(values[0] != num_inputs && values[1] != num_inputs &&
-              values[2] != 0);
+  // We expect that there is some perturbation in at least one output.
+  // Specifically, (num_inputs + noise, num_inputs + noise, noise) should not
+  // match (num_inputs, num_inputs, 0)
+  EXPECT_THAT(values, testing::Not(testing::ElementsAre(
+                          Eq(num_inputs), Eq(num_inputs), Eq(0))));
+}
+
+// Ensure that we have floating point output when we request it.
+TEST(DPClosedDomainHistogramTest, FloatTest) {
+  Intrinsic intrinsic = CreateIntrinsic<float, float>(/*epsilon=*/0.01,
+                                                      /*delta=*/1e-8,
+                                                      /*l0_bound=*/2,
+                                                      /*linfinity_bound=*/1);
+  auto aggregator = CreateTensorAggregator(intrinsic).value();
+  int num_inputs = 4000;
+  for (int i = 0; i < num_inputs; i++) {
+    Tensor keys =
+        Tensor::Create(DT_STRING, {2}, CreateTestData<string_view>({"a", "b"}))
+            .value();
+    Tensor values =
+        Tensor::Create(DT_FLOAT, {2}, CreateTestData<float>({1, 0})).value();
+    auto acc_status = aggregator->Accumulate({&keys, &values});
+    EXPECT_THAT(acc_status, IsOk());
+  }
+  EXPECT_EQ(aggregator->GetNumInputs(), num_inputs);
+  EXPECT_TRUE(aggregator->CanReport());
+
+  auto report = std::move(*aggregator).Report();
+  EXPECT_THAT(report, IsOk());
+
+  // There must be 2 columns, one for keys and one for aggregated values.
+  ASSERT_EQ(report->size(), 2);
+
+  // The type of the noisy values should be float.
+  ASSERT_EQ(report.value()[1].dtype(), DT_FLOAT);
+
+  // Because the output spec calls for floats and our noise-generating code
+  // should sample according to the output spec, we expect that the fractional
+  // part of each noisy value is non-zero.
+  auto noisy_values = report.value()[1].AsSpan<float>();
+  for (float noisy_value : noisy_values) {
+    noisy_value = std::abs(noisy_value);
+    EXPECT_THAT(noisy_value - std::floor(noisy_value), testing::Ne(0.0));
+  }
 }
 
 }  // namespace

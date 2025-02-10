@@ -19,6 +19,7 @@ from typing import Any, TypeVar
 import tensorflow as tf
 
 from tensorflow_federated.python.common_libs import structure
+from tensorflow_federated.python.learning.optimizers import nest_utils
 from tensorflow_federated.python.learning.optimizers import optimizer
 
 _BETA_1_KEY = 'beta_1'
@@ -35,7 +36,7 @@ _HPARAMS_KEYS = [
 ]
 
 State = TypeVar('State', bound=collections.OrderedDict[str, Any])
-Hparams = TypeVar('Hparams', bound=collections.OrderedDict[str, float])
+Hparams = TypeVar('Hparams', bound=collections.OrderedDict[str, Any])
 
 
 class _Adam(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
@@ -49,19 +50,19 @@ class _Adam(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
       epsilon: optimizer.Float = 1e-7,
   ):
     """Initializes Adam optimizer."""
-    if learning_rate < 0.0:
+    if not tf.is_symbolic_tensor(learning_rate) and learning_rate < 0.0:
       raise ValueError(
           f'Adam `learning_rate` must be nonnegative, found {learning_rate}.'
       )
-    if beta_1 < 0.0 or beta_1 > 1.0:
+    if not tf.is_symbolic_tensor(beta_1) and (beta_1 < 0.0 or beta_1 > 1.0):
       raise ValueError(
           f'Adam `beta_1` must be in the range [0.0, 1.0], found {beta_1}.'
       )
-    if beta_2 < 0.0 or beta_2 > 1.0:
+    if not tf.is_symbolic_tensor(beta_2) and (beta_2 < 0.0 or beta_2 > 1.0):
       raise ValueError(
           f'Adam `beta_2` must be in the range [0.0, 1.0], found {beta_2}.'
       )
-    if epsilon < 0.0:
+    if not tf.is_symbolic_tensor(epsilon) and epsilon < 0.0:
       raise ValueError(f'Adam `epsilon` must be nonnegative, found {epsilon}.')
     self._lr = learning_rate
     self._beta_1 = beta_1
@@ -75,7 +76,7 @@ class _Adam(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
     initial_preconditioner = tf.nest.map_structure(
         lambda s: tf.zeros(s.shape, s.dtype), specs
     )
-    state = collections.OrderedDict([
+    return collections.OrderedDict([
         (optimizer.LEARNING_RATE_KEY, self._lr),
         (_BETA_1_KEY, self._beta_1),
         (_BETA_2_KEY, self._beta_2),
@@ -84,7 +85,6 @@ class _Adam(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
         (_ACCUMULATOR_KEY, initial_accumulator),
         (_PRECONDITIONER_KEY, initial_preconditioner),
     ])
-    return state
 
   def next(
       self, state: State, weights: optimizer.Weights, gradients: Any
@@ -102,26 +102,37 @@ class _Adam(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
     optimizer.check_weights_state_match(
         weights, preconditioner, 'preconditioner'
     )
-
-    updated_accumulator = tf.nest.map_structure(
-        lambda a, g: a + (g - a) * (1 - beta_1), accumulator, gradients
-    )
-    updated_preconditioner = tf.nest.map_structure(
-        lambda s, g: s + (tf.math.square(g) - s) * (1 - beta_2),
-        preconditioner,
-        gradients,
-    )
+    if tf.is_tensor(beta_1):
+      casted_step = tf.cast(step, beta_1.dtype)
+    else:
+      casted_step = step
     normalized_lr = (
         lr
-        * tf.math.sqrt((1 - tf.math.pow(beta_2, tf.cast(step, tf.float32))))
-        / (1 - tf.math.pow(beta_1, tf.cast(step, tf.float32)))
+        * tf.math.sqrt((1.0 - tf.math.pow(beta_2, casted_step)))
+        / (1.0 - tf.math.pow(beta_1, casted_step))
     )
-    updated_weights = tf.nest.map_structure(
-        lambda w, g, a, s: w - normalized_lr * a / (tf.math.sqrt(s) + epsilon),
-        weights,
-        gradients,
-        updated_accumulator,
-        updated_preconditioner,
+
+    def _adam_update(w, a, p, g):
+      if g is None:
+        return w, a, p
+      a = a + (g - a) * (1.0 - tf.cast(beta_1, a.dtype))
+      p = p + (tf.math.square(g) - p) * (1.0 - tf.cast(beta_2, p.dtype))
+      w = w - tf.cast(normalized_lr, a.dtype) * a / (
+          tf.math.sqrt(p) + tf.cast(epsilon, p.dtype)
+      )
+      return w, a, p
+
+    updated_weights, updated_accumulator, updated_preconditioner = (
+        nest_utils.map_at_leaves(
+            _adam_update,
+            weights,
+            accumulator,
+            preconditioner,
+            gradients,
+            # We have to tell `map_at_leaves` how many outputs to yield in case
+            # `weights` has no leaves.
+            num_outputs=3,
+        )
     )
 
     updated_state = collections.OrderedDict([
@@ -139,11 +150,6 @@ class _Adam(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
     return collections.OrderedDict([(k, state[k]) for k in _HPARAMS_KEYS])
 
   def set_hparams(self, state: State, hparams: Hparams) -> State:
-    # TODO: b/245962555 - Find an alternative to `update_struct` if it
-    # interferes with typing guarantees.
-    # We use `tff.structure.update_struct` (rather than something like
-    # `copy.deepcopy`) to ensure that this can be called within a
-    # `tff.Computation`.
     return structure.update_struct(state, **hparams)
 
 

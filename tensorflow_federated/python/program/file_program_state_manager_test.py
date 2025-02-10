@@ -21,13 +21,12 @@ from unittest import mock
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import federated_language
 import numpy as np
-import tensorflow as tf
 import tree
 
 from tensorflow_federated.python.program import file_program_state_manager
 from tensorflow_federated.python.program import file_utils
-from tensorflow_federated.python.program import program_state_manager
 from tensorflow_federated.python.program import program_test_utils
 
 
@@ -52,62 +51,11 @@ class FileProgramStateManagerInitTest(parameterized.TestCase):
 
     self.assertTrue(os.path.exists(root_dir))
 
-  @parameterized.named_parameters(
-      ('none', None),
-      ('bool', True),
-      ('int', 1),
-      ('list', []),
-  )
-  def test_raises_type_error_with_root_dir(self, root_dir):
-    with self.assertRaises(TypeError):
-      file_program_state_manager.FileProgramStateManager(root_dir)
-
   def test_raises_value_error_with_root_dir_empty(self):
     root_dir = ''
 
     with self.assertRaises(ValueError):
       file_program_state_manager.FileProgramStateManager(root_dir)
-
-  @parameterized.named_parameters(
-      ('none', None),
-      ('bool', True),
-      ('int', 1),
-      ('list', []),
-  )
-  def test_raises_type_error_with_prefix(self, prefix):
-    root_dir = self.create_tempdir()
-
-    with self.assertRaises(TypeError):
-      file_program_state_manager.FileProgramStateManager(
-          root_dir, prefix=prefix
-      )
-
-  @parameterized.named_parameters(
-      ('none', None),
-      ('str', 'a'),
-      ('list', []),
-  )
-  def test_raises_type_error_with_keep_total(self, keep_total):
-    root_dir = self.create_tempdir()
-
-    with self.assertRaises(TypeError):
-      file_program_state_manager.FileProgramStateManager(
-          root_dir, keep_total=keep_total
-      )
-
-  @parameterized.named_parameters(
-      ('none', None),
-      ('int', 1),
-      ('str', 'a'),
-      ('list', []),
-  )
-  def test_raises_type_error_with_keep_first(self, keep_first):
-    root_dir = self.create_tempdir()
-
-    with self.assertRaises(TypeError):
-      file_program_state_manager.FileProgramStateManager(
-          root_dir, keep_first=keep_first
-      )
 
 
 class FileProgramStateManagerGetVersionsTest(
@@ -121,8 +69,8 @@ class FileProgramStateManagerGetVersionsTest(
   )
   async def test_returns_versions_with_program_state_only(self, count):
     root_dir = self.create_tempdir()
-    for version in range(count):
-      os.mkdir(os.path.join(root_dir, f'program_state_{version}'))
+    for i in range(count):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
         root_dir, keep_total=0
     )
@@ -136,8 +84,8 @@ class FileProgramStateManagerGetVersionsTest(
       self,
   ):
     root_dir = self.create_tempdir()
-    for version in range(10):
-      os.mkdir(os.path.join(root_dir, f'program_state_{version}'))
+    for i in range(10):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
       tempfile.mkstemp(prefix=os.path.join(root_dir, 'file_'))
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
         root_dir, keep_total=0
@@ -152,8 +100,8 @@ class FileProgramStateManagerGetVersionsTest(
       self,
   ):
     root_dir = self.create_tempdir()
-    for version in range(10):
-      os.mkdir(os.path.join(root_dir, f'program_state_{version}'))
+    for i in range(10):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
       tempfile.mkstemp(prefix=os.path.join(root_dir, 'program_state_'))
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
         root_dir, keep_total=0
@@ -230,21 +178,6 @@ class FileProgramStateManagerGetVersionForPathTest(parameterized.TestCase):
 
     self.assertIsNone(version)
 
-  @parameterized.named_parameters(
-      ('none', None),
-      ('bool', True),
-      ('int', 1),
-      ('list', []),
-  )
-  def test_raises_type_error_with_path(self, path):
-    root_dir = self.create_tempdir()
-    program_state_mngr = file_program_state_manager.FileProgramStateManager(
-        root_dir
-    )
-
-    with self.assertRaises(TypeError):
-      program_state_mngr._get_version_for_path(path)
-
 
 class FileProgramStateManagerGetPathForVersionTest(parameterized.TestCase):
 
@@ -264,182 +197,177 @@ class FileProgramStateManagerGetPathForVersionTest(parameterized.TestCase):
 
     self.assertEqual(actual_path, expected_path)
 
-  @parameterized.named_parameters(
-      ('0', 0),
-      ('1', 1),
-      ('negative', -1),
-      ('numpy', np.int32(1)),
-  )
-  async def test_does_not_raise_type_error_with_version(self, version):
-    root_dir = self.create_tempdir()
-    program_state_mngr = file_program_state_manager.FileProgramStateManager(
-        root_dir
-    )
-
-    try:
-      program_state_mngr._get_path_for_version(version)
-    except TypeError:
-      self.fail('Raised `TypeError` unexpectedly.')
-
-  @parameterized.named_parameters(
-      ('none', None),
-      ('str', 'a'),
-      ('list', []),
-  )
-  def test_raises_type_error_with_version(self, version):
-    root_dir = self.create_tempdir()
-    program_state_mngr = file_program_state_manager.FileProgramStateManager(
-        root_dir
-    )
-
-    with self.assertRaises(TypeError):
-      program_state_mngr._get_path_for_version(version)
-
 
 class FileProgramStateManagerLoadTest(
     parameterized.TestCase, unittest.IsolatedAsyncioTestCase
 ):
 
-  # pyformat: disable
   @parameterized.named_parameters(
       # materialized values
       ('none', None, None),
       ('bool', True, np.bool_(True)),
       ('int', 1, np.int32(1)),
-      ('str', 'a', b'a'),
-      ('tensor_int', tf.constant(1), np.int32(1)),
-      ('tensor_str', tf.constant('a'), b'a'),
-      ('tensor_array', tf.constant([1] * 3), np.array([1] * 3, np.int32)),
+      ('str', 'abc', b'abc'),
       ('numpy_int', np.int32(1), np.int32(1)),
       ('numpy_array', np.array([1] * 3, np.int32), np.array([1] * 3, np.int32)),
-
       # materializable value references
-      ('materializable_value_reference_tensor',
-       program_test_utils.TestMaterializableValueReference(1),
-       np.int32(1)),
-      ('materializable_value_reference_sequence',
-       program_test_utils.TestMaterializableValueReference(
-           tf.data.Dataset.from_tensor_slices([1, 2, 3])),
-       tf.data.Dataset.from_tensor_slices([1, 2, 3])),
-
+      (
+          'materializable_value_reference_tensor',
+          program_test_utils.TestMaterializableValueReference(1),
+          np.int32(1),
+      ),
+      (
+          'materializable_value_reference_sequence',
+          program_test_utils.TestMaterializableValueReference([1, 2, 3]),
+          [1, 2, 3],
+      ),
       # serializable values
-      ('serializable_value',
-       program_test_utils.TestSerializable(1, 2),
-       program_test_utils.TestSerializable(1, 2)),
-
+      (
+          'serializable_value',
+          program_test_utils.TestSerializable(1, 2),
+          program_test_utils.TestSerializable(1, 2),
+      ),
       # structures
-      ('list',
-       [
-           True,
-           1,
-           'a',
-           program_test_utils.TestMaterializableValueReference(2),
-           program_test_utils.TestSerializable(3, 4),
-       ],
-       [
-           np.bool_(True),
-           np.int32(1),
-           b'a',
-           np.int32(2),
-           program_test_utils.TestSerializable(3, 4),
-       ]),
+      (
+          'list',
+          [
+              True,
+              1,
+              'abc',
+              program_test_utils.TestMaterializableValueReference(2),
+              program_test_utils.TestSerializable(3, 4),
+          ],
+          [
+              np.bool_(True),
+              np.int32(1),
+              b'abc',
+              np.int32(2),
+              program_test_utils.TestSerializable(3, 4),
+          ],
+      ),
       ('list_empty', [], []),
-      ('list_nested',
-       [
-           [
-               True,
-               1,
-               'a',
-               program_test_utils.TestMaterializableValueReference(2),
-               program_test_utils.TestSerializable(3, 4),
-           ],
-           [5],
-       ],
-       [
-           [
-               np.bool_(True),
-               np.int32(1),
-               b'a',
-               np.int32(2),
-               program_test_utils.TestSerializable(3, 4),
-           ],
-           [np.int32(5)],
-       ]),
-      ('dict',
-       {
-           'a': True,
-           'b': 1,
-           'c': 'a',
-           'd': program_test_utils.TestMaterializableValueReference(2),
-           'e': program_test_utils.TestSerializable(3, 4),
-       },
-       {
-           'a': np.bool_(True),
-           'b': np.int32(1),
-           'c': b'a',
-           'd': np.int32(2),
-           'e': program_test_utils.TestSerializable(3, 4),
-       }),
+      (
+          'list_nested',
+          [
+              [
+                  True,
+                  1,
+                  'abc',
+                  program_test_utils.TestMaterializableValueReference(2),
+                  program_test_utils.TestSerializable(3, 4),
+              ],
+              [5],
+          ],
+          [
+              [
+                  np.bool_(True),
+                  np.int32(1),
+                  b'abc',
+                  np.int32(2),
+                  program_test_utils.TestSerializable(3, 4),
+              ],
+              [np.int32(5)],
+          ],
+      ),
+      (
+          'dict_ordered',
+          {
+              'a': True,
+              'b': 1,
+              'c': 'abc',
+              'd': program_test_utils.TestMaterializableValueReference(2),
+              'e': program_test_utils.TestSerializable(3, 4),
+          },
+          {
+              'a': np.bool_(True),
+              'b': np.int32(1),
+              'c': b'abc',
+              'd': np.int32(2),
+              'e': program_test_utils.TestSerializable(3, 4),
+          },
+      ),
+      (
+          'dict_unordered',
+          {
+              'c': True,
+              'b': 1,
+              'a': 'abc',
+              'd': program_test_utils.TestMaterializableValueReference(2),
+              'e': program_test_utils.TestSerializable(3, 4),
+          },
+          {
+              'c': np.bool_(True),
+              'b': np.int32(1),
+              'a': b'abc',
+              'd': np.int32(2),
+              'e': program_test_utils.TestSerializable(3, 4),
+          },
+      ),
       ('dict_empty', {}, {}),
-      ('dict_nested',
-       {
-           'x': {
-               'a': True,
-               'b': 1,
-               'c': 'a',
-               'd': program_test_utils.TestMaterializableValueReference(2),
-               'e': program_test_utils.TestSerializable(3, 4),
-           },
-           'y': {'a': 5},
-       },
-       {
-           'x': {
-               'a': np.bool_(True),
-               'b': np.int32(1),
-               'c': b'a',
-               'd': np.int32(2),
-               'e': program_test_utils.TestSerializable(3, 4),
-           },
-           'y': {'a': np.int32(5)}
-       }),
-      ('named_tuple',
-       program_test_utils.TestNamedTuple1(
-           a=True,
-           b=1,
-           c='a',
-           d=program_test_utils.TestMaterializableValueReference(2),
-           e=program_test_utils.TestSerializable(3, 4),
-       ),
-       program_test_utils.TestNamedTuple1(
-           a=np.bool_(True),
-           b=np.int32(1),
-           c=b'a',
-           d=np.int32(2),
-           e=program_test_utils.TestSerializable(3, 4),
-       )),
-      ('named_tuple_nested',
-       program_test_utils.TestNamedTuple3(
-           x=program_test_utils.TestNamedTuple1(
-               a=True,
-               b=1,
-               c='a',
-               d=program_test_utils.TestMaterializableValueReference(2),
-               e=program_test_utils.TestSerializable(3, 4),
-           ),
-           y=program_test_utils.TestNamedTuple2(a=5),
-       ),
-       program_test_utils.TestNamedTuple3(
-           x=program_test_utils.TestNamedTuple1(
-               a=np.bool_(True),
-               b=np.int32(1),
-               c=b'a',
-               d=np.int32(2),
-               e=program_test_utils.TestSerializable(3, 4),
-           ),
-           y=program_test_utils.TestNamedTuple2(a=np.int32(5)),
-       )),
+      (
+          'dict_nested',
+          {
+              'x': {
+                  'a': True,
+                  'b': 1,
+                  'c': 'abc',
+                  'd': program_test_utils.TestMaterializableValueReference(2),
+                  'e': program_test_utils.TestSerializable(3, 4),
+              },
+              'y': {'a': 5},
+          },
+          {
+              'x': {
+                  'a': np.bool_(True),
+                  'b': np.int32(1),
+                  'c': b'abc',
+                  'd': np.int32(2),
+                  'e': program_test_utils.TestSerializable(3, 4),
+              },
+              'y': {'a': np.int32(5)},
+          },
+      ),
+      (
+          'named_tuple',
+          program_test_utils.TestNamedTuple1(
+              a=True,
+              b=1,
+              c='abc',
+              d=program_test_utils.TestMaterializableValueReference(2),
+              e=program_test_utils.TestSerializable(3, 4),
+          ),
+          program_test_utils.TestNamedTuple1(
+              a=np.bool_(True),
+              b=np.int32(1),
+              c=b'abc',
+              d=np.int32(2),
+              e=program_test_utils.TestSerializable(3, 4),
+          ),
+      ),
+      (
+          'named_tuple_nested',
+          program_test_utils.TestNamedTuple3(
+              x=program_test_utils.TestNamedTuple1(
+                  a=True,
+                  b=1,
+                  c='abc',
+                  d=program_test_utils.TestMaterializableValueReference(2),
+                  e=program_test_utils.TestSerializable(3, 4),
+              ),
+              y=program_test_utils.TestNamedTuple2(a=5),
+          ),
+          program_test_utils.TestNamedTuple3(
+              x=program_test_utils.TestNamedTuple1(
+                  a=np.bool_(True),
+                  b=np.int32(1),
+                  c=b'abc',
+                  d=np.int32(2),
+                  e=program_test_utils.TestSerializable(3, 4),
+              ),
+              y=program_test_utils.TestNamedTuple2(a=np.int32(5)),
+          ),
+      ),
   )
-  # pyformat: enable
   async def test_returns_program_state(self, program_state, expected_state):
     root_dir = self.create_tempdir()
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
@@ -452,6 +380,7 @@ class FileProgramStateManagerLoadTest(
     actual_state = await program_state_mngr.load(version, structure)
 
     tree.assert_same_structure(actual_state, expected_state)
+    program_test_utils.assert_same_key_order(actual_state, expected_state)
     actual_state = program_test_utils.to_python(actual_state)
     expected_state = program_test_utils.to_python(expected_state)
     self.assertEqual(actual_state, expected_state)
@@ -485,7 +414,9 @@ class FileProgramStateManagerLoadTest(
     version = 0
     structure = 'state'
 
-    with self.assertRaises(program_state_manager.ProgramStateNotFoundError):
+    with self.assertRaises(
+        federated_language.program.ProgramStateNotFoundError
+    ):
       await program_state_mngr.load(version, structure)
 
   async def test_raises_program_state_not_found_error_with_unknown_version(
@@ -501,36 +432,10 @@ class FileProgramStateManagerLoadTest(
     unknown_version = 0
     structure = 'state'
 
-    with self.assertRaises(program_state_manager.ProgramStateNotFoundError):
+    with self.assertRaises(
+        federated_language.program.ProgramStateNotFoundError
+    ):
       await program_state_mngr.load(unknown_version, structure)
-
-  async def test_raises_value_error_with_incorrect_structure(self):
-    root_dir = self.create_tempdir()
-    program_state_mngr = file_program_state_manager.FileProgramStateManager(
-        root_dir
-    )
-    program_state = 'state_1'
-    version = 1
-    await program_state_mngr.save(program_state, version)
-    structure = []
-
-    with self.assertRaises(ValueError):
-      await program_state_mngr.load(version, structure)
-
-  @parameterized.named_parameters(
-      ('none', None),
-      ('str', 'a'),
-      ('list', []),
-  )
-  async def test_raises_type_error_with_version(self, version):
-    root_dir = self.create_tempdir()
-    program_state_mngr = file_program_state_manager.FileProgramStateManager(
-        root_dir
-    )
-    structure = 'state'
-
-    with self.assertRaises(TypeError):
-      await program_state_mngr.load(version, structure)
 
 
 class FileProgramStateManagerRemoveTest(
@@ -544,8 +449,8 @@ class FileProgramStateManagerRemoveTest(
   )
   async def test_removes_program_state_with_version(self, version):
     root_dir = self.create_tempdir()
-    for version in range(3):
-      os.mkdir(os.path.join(root_dir, f'program_state_{version}'))
+    for i in range(3):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
         root_dir
     )
@@ -580,46 +485,15 @@ class FileProgramStateManagerRemoveTest(
 
     self.assertCountEqual(os.listdir(root_dir), ['program_state_1'])
 
-  @parameterized.named_parameters(
-      ('0', 0),
-      ('1', 1),
-      ('negative', -1),
-      ('numpy', np.int32(1)),
-  )
-  async def test_does_not_raise_type_error_with_version(self, version):
-    root_dir = self.create_tempdir()
-    program_state_mngr = file_program_state_manager.FileProgramStateManager(
-        root_dir
-    )
-
-    try:
-      await program_state_mngr._remove(version)
-    except TypeError:
-      self.fail('Raised `TypeError` unexpectedly.')
-
-  @parameterized.named_parameters(
-      ('none', None),
-      ('str', 'a'),
-      ('list', []),
-  )
-  async def test_raises_type_error_with_version(self, version):
-    root_dir = self.create_tempdir()
-    program_state_mngr = file_program_state_manager.FileProgramStateManager(
-        root_dir
-    )
-
-    with self.assertRaises(TypeError):
-      await program_state_mngr._remove(version)
-
 
 class FileProgramStateManagerRemoveOldProgramStateTest(
-    absltest.TestCase, unittest.IsolatedAsyncioTestCase
+    parameterized.TestCase, unittest.IsolatedAsyncioTestCase
 ):
 
   async def test_does_not_remove_program_state_with_keep_total_0(self):
     root_dir = self.create_tempdir()
-    for version in range(10):
-      os.mkdir(os.path.join(root_dir, f'program_state_{version}'))
+    for i in range(10):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
         root_dir, keep_total=0
     )
@@ -632,8 +506,8 @@ class FileProgramStateManagerRemoveOldProgramStateTest(
 
   async def test_removes_program_state_with_keep_first_true(self):
     root_dir = self.create_tempdir()
-    for version in range(10):
-      os.mkdir(os.path.join(root_dir, f'program_state_{version}'))
+    for i in range(10):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
         root_dir, keep_total=3, keep_first=True
     )
@@ -647,8 +521,8 @@ class FileProgramStateManagerRemoveOldProgramStateTest(
 
   async def test_removes_program_state_with_keep_first_false(self):
     root_dir = self.create_tempdir()
-    for version in range(10):
-      os.mkdir(os.path.join(root_dir, f'program_state_{version}'))
+    for i in range(10):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
         root_dir, keep_total=3, keep_first=False
     )
@@ -662,8 +536,8 @@ class FileProgramStateManagerRemoveOldProgramStateTest(
 
   async def test_removes_all_program_state_except_for_the_first(self):
     root_dir = self.create_tempdir()
-    for version in range(10):
-      os.mkdir(os.path.join(root_dir, f'program_state_{version}'))
+    for i in range(10):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
         root_dir, keep_total=1, keep_first=True
     )
@@ -674,8 +548,8 @@ class FileProgramStateManagerRemoveOldProgramStateTest(
 
   async def test_removes_all_program_state_except_for_the_last(self):
     root_dir = self.create_tempdir()
-    for version in range(10):
-      os.mkdir(os.path.join(root_dir, f'program_state_{version}'))
+    for i in range(10):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
         root_dir, keep_total=1, keep_first=False
     )
@@ -683,6 +557,71 @@ class FileProgramStateManagerRemoveOldProgramStateTest(
     await program_state_mngr._remove_old_program_state()
 
     self.assertCountEqual(os.listdir(root_dir), ['program_state_9'])
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='keep_first_true',
+          keep_total=3,
+          keep_first=True,
+          keep_every_k=3,
+          expected_remaining_states=[
+              'program_state_0',
+              'program_state_6',
+              'program_state_9',
+          ],
+      ),
+      dict(
+          testcase_name='keep_first_false',
+          keep_total=3,
+          keep_first=False,
+          keep_every_k=3,
+          expected_remaining_states=[
+              'program_state_3',
+              'program_state_6',
+              'program_state_9',
+          ],
+      ),
+      dict(
+          testcase_name='unlimited_total',
+          keep_total=0,
+          keep_first=True,
+          keep_every_k=3,
+          expected_remaining_states=[
+              'program_state_0',
+              'program_state_3',
+              'program_state_6',
+              'program_state_9',
+          ],
+      ),
+      dict(
+          testcase_name='total_has_not_reached',
+          keep_total=5,
+          keep_first=True,
+          keep_every_k=3,
+          expected_remaining_states=[
+              'program_state_0',
+              'program_state_3',
+              'program_state_6',
+              'program_state_9',
+          ],
+      ),
+  )
+  async def test_keeps_every_k_program_states(
+      self, keep_total, keep_first, keep_every_k, expected_remaining_states
+  ):
+    root_dir = self.create_tempdir()
+    for i in range(10):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
+    program_state_mngr = file_program_state_manager.FileProgramStateManager(
+        root_dir,
+        keep_total=keep_total,
+        keep_first=keep_first,
+        keep_every_k=keep_every_k,
+    )
+
+    await program_state_mngr._remove_old_program_state()
+
+    self.assertCountEqual(os.listdir(root_dir), expected_remaining_states)
 
 
 class FileProgramStateManagerRemoveAllTest(
@@ -701,8 +640,8 @@ class FileProgramStateManagerRemoveAllTest(
 
   async def test_removes_all_program_state(self):
     root_dir = self.create_tempdir()
-    for version in range(10):
-      os.mkdir(os.path.join(root_dir, f'program_state_{version}'))
+    for i in range(10):
+      os.mkdir(os.path.join(root_dir, f'program_state_{i}'))
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
         root_dir
     )
@@ -716,148 +655,172 @@ class FileProgramStateManagerSaveTest(
     parameterized.TestCase, unittest.IsolatedAsyncioTestCase
 ):
 
-  # pyformat: disable
   @parameterized.named_parameters(
       # materialized values
       ('none', None, None),
       ('bool', True, True),
       ('int', 1, 1),
-      ('str', 'a', 'a'),
-      ('tensor_int', tf.constant(1), tf.constant(1)),
-      ('tensor_str', tf.constant('a'), tf.constant('a')),
-      ('tensor_array', tf.constant([1] * 3), tf.constant([1] * 3)),
+      ('str', 'abc', 'abc'),
       ('numpy_int', np.int32(1), np.int32(1)),
-      ('numpy_array',
-       np.array([1] * 3, np.int32),
-       np.array([1] * 3, np.int32)),
-
+      ('numpy_array', np.array([1] * 3, np.int32), np.array([1] * 3, np.int32)),
       # materializable value references
-      ('materializable_value_reference_tensor',
-       program_test_utils.TestMaterializableValueReference(1),
-       1),
-      ('materializable_value_reference_sequence',
-       program_test_utils.TestMaterializableValueReference(
-           tf.data.Dataset.from_tensor_slices([1, 2, 3])),
-       tf.data.Dataset.from_tensor_slices([1, 2, 3])),
-
+      (
+          'materializable_value_reference_tensor',
+          program_test_utils.TestMaterializableValueReference(1),
+          1,
+      ),
+      (
+          'materializable_value_reference_sequence',
+          program_test_utils.TestMaterializableValueReference([1, 2, 3]),
+          [1, 2, 3],
+      ),
       # serializable values
-      ('serializable_value',
-       program_test_utils.TestSerializable(1, 2),
-       program_test_utils.TestSerializable(1, 2).to_bytes()),
-
+      (
+          'serializable_value',
+          program_test_utils.TestSerializable(1, 2),
+          program_test_utils.TestSerializable(1, 2).to_bytes(),
+      ),
       # structures
-      ('list',
-       [
-           True,
-           1,
-           'a',
-           program_test_utils.TestMaterializableValueReference(2),
-           program_test_utils.TestSerializable(3, 4),
-       ],
-       [
-           True,
-           1,
-           'a',
-           2,
-           program_test_utils.TestSerializable(3, 4).to_bytes(),
-       ]),
+      (
+          'list',
+          [
+              True,
+              1,
+              'abc',
+              program_test_utils.TestMaterializableValueReference(2),
+              program_test_utils.TestSerializable(3, 4),
+          ],
+          [
+              True,
+              1,
+              'abc',
+              2,
+              program_test_utils.TestSerializable(3, 4).to_bytes(),
+          ],
+      ),
       ('list_empty', [], []),
-      ('list_nested',
-       [
-           [
-               True,
-               1,
-               'a',
-               program_test_utils.TestMaterializableValueReference(2),
-               program_test_utils.TestSerializable(3, 4),
-           ],
-           [5],
-       ],
-       [
-           [
-               True,
-               1,
-               'a',
-               2,
-               program_test_utils.TestSerializable(3, 4).to_bytes(),
-           ],
-           [5],
-       ]),
-      ('dict',
-       {
-           'a': True,
-           'b': 1,
-           'c': 'a',
-           'd': program_test_utils.TestMaterializableValueReference(2),
-           'e': program_test_utils.TestSerializable(3, 4),
-       },
-       {
-           'a': True,
-           'b': 1,
-           'c': 'a',
-           'd': 2,
-           'e': program_test_utils.TestSerializable(3, 4).to_bytes(),
-       }),
+      (
+          'list_nested',
+          [
+              [
+                  True,
+                  1,
+                  'abc',
+                  program_test_utils.TestMaterializableValueReference(2),
+                  program_test_utils.TestSerializable(3, 4),
+              ],
+              [5],
+          ],
+          [
+              [
+                  True,
+                  1,
+                  'abc',
+                  2,
+                  program_test_utils.TestSerializable(3, 4).to_bytes(),
+              ],
+              [5],
+          ],
+      ),
+      (
+          'dict_ordered',
+          {
+              'a': True,
+              'b': 1,
+              'c': 'abc',
+              'd': program_test_utils.TestMaterializableValueReference(2),
+              'e': program_test_utils.TestSerializable(3, 4),
+          },
+          {
+              'a': True,
+              'b': 1,
+              'c': 'abc',
+              'd': 2,
+              'e': program_test_utils.TestSerializable(3, 4).to_bytes(),
+          },
+      ),
+      (
+          'dict_unordered',
+          {
+              'c': True,
+              'b': 1,
+              'a': 'abc',
+              'd': program_test_utils.TestMaterializableValueReference(2),
+              'e': program_test_utils.TestSerializable(3, 4),
+          },
+          {
+              'c': True,
+              'b': 1,
+              'a': 'abc',
+              'd': 2,
+              'e': program_test_utils.TestSerializable(3, 4).to_bytes(),
+          },
+      ),
       ('dict_empty', {}, {}),
-      ('dict_nested',
-       {
-           'x': {
-               'a': True,
-               'b': 1,
-               'c': 'a',
-               'd': program_test_utils.TestMaterializableValueReference(2),
-               'e': program_test_utils.TestSerializable(3, 4),
-           },
-           'y': {'a': 5},
-       },
-       {
-           'x': {
-               'a': True,
-               'b': 1,
-               'c': 'a',
-               'd': 2,
-               'e': program_test_utils.TestSerializable(3, 4).to_bytes(),
-           },
-           'y': {'a': 5},
-       }),
-      ('named_tuple',
-       program_test_utils.TestNamedTuple1(
-           a=True,
-           b=1,
-           c='a',
-           d=program_test_utils.TestMaterializableValueReference(2),
-           e=program_test_utils.TestSerializable(3, 4),
-       ),
-       program_test_utils.TestNamedTuple1(
-           a=True,
-           b=1,
-           c='a',
-           d=2,
-           e=program_test_utils.TestSerializable(3, 4).to_bytes(),
-       )),
-      ('named_tuple_nested',
-       program_test_utils.TestNamedTuple3(
-           x=program_test_utils.TestNamedTuple1(
-               a=True,
-               b=1,
-               c='a',
-               d=program_test_utils.TestMaterializableValueReference(2),
-               e=program_test_utils.TestSerializable(3, 4),
-           ),
-           y=program_test_utils.TestNamedTuple2(a=5),
-       ),
-       program_test_utils.TestNamedTuple3(
-           x=program_test_utils.TestNamedTuple1(
-               a=True,
-               b=1,
-               c='a',
-               d=2,
-               e=program_test_utils.TestSerializable(3, 4).to_bytes(),
-           ),
-           y=program_test_utils.TestNamedTuple2(a=5),
-       )),
+      (
+          'dict_nested',
+          {
+              'x': {
+                  'a': True,
+                  'b': 1,
+                  'c': 'abc',
+                  'd': program_test_utils.TestMaterializableValueReference(2),
+                  'e': program_test_utils.TestSerializable(3, 4),
+              },
+              'y': {'a': 5},
+          },
+          {
+              'x': {
+                  'a': True,
+                  'b': 1,
+                  'c': 'abc',
+                  'd': 2,
+                  'e': program_test_utils.TestSerializable(3, 4).to_bytes(),
+              },
+              'y': {'a': 5},
+          },
+      ),
+      (
+          'named_tuple',
+          program_test_utils.TestNamedTuple1(
+              a=True,
+              b=1,
+              c='abc',
+              d=program_test_utils.TestMaterializableValueReference(2),
+              e=program_test_utils.TestSerializable(3, 4),
+          ),
+          program_test_utils.TestNamedTuple1(
+              a=True,
+              b=1,
+              c='abc',
+              d=2,
+              e=program_test_utils.TestSerializable(3, 4).to_bytes(),
+          ),
+      ),
+      (
+          'named_tuple_nested',
+          program_test_utils.TestNamedTuple3(
+              x=program_test_utils.TestNamedTuple1(
+                  a=True,
+                  b=1,
+                  c='abc',
+                  d=program_test_utils.TestMaterializableValueReference(2),
+                  e=program_test_utils.TestSerializable(3, 4),
+              ),
+              y=program_test_utils.TestNamedTuple2(a=5),
+          ),
+          program_test_utils.TestNamedTuple3(
+              x=program_test_utils.TestNamedTuple1(
+                  a=True,
+                  b=1,
+                  c='abc',
+                  d=2,
+                  e=program_test_utils.TestSerializable(3, 4).to_bytes(),
+              ),
+              y=program_test_utils.TestNamedTuple2(a=5),
+          ),
+      ),
   )
-  # pyformat: enable
   async def test_writes_program_state(self, program_state, expected_value):
     root_dir = self.create_tempdir()
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
@@ -875,6 +838,7 @@ class FileProgramStateManagerSaveTest(
       _, args, kwargs = call
       actual_value, actual_path = args
       tree.assert_same_structure(actual_value, expected_value)
+      program_test_utils.assert_same_key_order(actual_value, expected_value)
       actual_value = program_test_utils.to_python(actual_value)
       expected_value = program_test_utils.to_python(expected_value)
       self.assertEqual(actual_value, expected_value)
@@ -908,39 +872,6 @@ class FileProgramStateManagerSaveTest(
 
       mock_remove_old_program_state.assert_called_once()
 
-  @parameterized.named_parameters(
-      ('0', 0),
-      ('1', 1),
-      ('negative', -1),
-      ('numpy', np.int32(1)),
-  )
-  async def test_does_not_raise_type_error_with_version(self, version):
-    root_dir = self.create_tempdir()
-    program_state_mngr = file_program_state_manager.FileProgramStateManager(
-        root_dir
-    )
-    program_state = 'state'
-
-    try:
-      await program_state_mngr.save(program_state, version)
-    except TypeError:
-      self.fail('Raised `TypeError` unexpectedly.')
-
-  @parameterized.named_parameters(
-      ('none', None),
-      ('str', 'a'),
-      ('list', []),
-  )
-  async def test_raises_type_error_with_version(self, version):
-    root_dir = self.create_tempdir()
-    program_state_mngr = file_program_state_manager.FileProgramStateManager(
-        root_dir
-    )
-    program_state = 'state'
-
-    with self.assertRaises(TypeError):
-      await program_state_mngr.save(program_state, version)
-
   async def test_raises_program_state_exists_error_with_existing_version(self):
     root_dir = self.create_tempdir()
     program_state_mngr = file_program_state_manager.FileProgramStateManager(
@@ -951,7 +882,7 @@ class FileProgramStateManagerSaveTest(
 
     await program_state_mngr.save(program_state, version)
 
-    with self.assertRaises(program_state_manager.ProgramStateExistsError):
+    with self.assertRaises(federated_language.program.ProgramStateExistsError):
       await program_state_mngr.save(program_state, version)
 
 

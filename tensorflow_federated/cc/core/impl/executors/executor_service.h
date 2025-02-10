@@ -20,20 +20,20 @@ limitations under the License
 #include <functional>
 #include <memory>
 #include <string>
-#include <string_view>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "include/grpcpp/grpcpp.h"
 #include "include/grpcpp/support/status.h"
+#include "federated_language/proto/computation.pb.h"
 #include "tensorflow_federated/cc/core/impl/executors/cardinalities.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/status_conversion.h"
-#include "tensorflow_federated/proto/v0/computation.pb.h"
 #include "tensorflow_federated/proto/v0/executor.grpc.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
@@ -134,7 +134,7 @@ class ExecutorService : public v0::ExecutorGroup::Service {
   // Writes the `std::shared_ptr<Executor>` corresponding to `executor_id` into
   // `executor_out`. `method name` is the name of the caller that requested
   // access to this executor, and is used for debug purposes only.
-  grpc::Status RequireExecutor(std::string_view method_name,
+  grpc::Status RequireExecutor(absl::string_view method_name,
                                const v0::ExecutorId& executor_id,
                                std::shared_ptr<Executor>& executor_out);
 

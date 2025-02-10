@@ -16,10 +16,11 @@ import collections
 from unittest import mock
 
 from absl.testing import parameterized
+import federated_language
 import numpy as np
 import tensorflow as tf
 
-from tensorflow_federated.python.core.test import static_assert
+from tensorflow_federated.python.core.environments.tensorflow_backend import tensorflow_test_utils
 from tensorflow_federated.python.learning import loop_builder
 from tensorflow_federated.python.learning import model_update_aggregator
 from tensorflow_federated.python.learning.algorithms import fed_sgd
@@ -28,7 +29,6 @@ from tensorflow_federated.python.learning.models import functional
 from tensorflow_federated.python.learning.models import model_examples
 from tensorflow_federated.python.learning.models import model_weights
 from tensorflow_federated.python.learning.models import test_models
-from tensorflow_federated.python.tensorflow_libs import tensorflow_test_utils
 
 
 def _dataset() -> tf.data.Dataset:
@@ -43,7 +43,7 @@ def _dataset() -> tf.data.Dataset:
   # producing 3 minibatches (the last one with only 2 examples).
   # Note that `batch` is required for this dataset to be useable,
   # as it adds the batch dimension which is expected by the model.
-  return dataset.repeat(2).batch(3)
+  return dataset.repeat(3).batch(3)
 
 
 def _model_fn() -> model_examples.LinearRegression:
@@ -102,8 +102,9 @@ class FederatedSgdTest(tf.test.TestCase, parameterized.TestCase):
     # Both trainable parameters should have gradients, and we don't return the
     # non-trainable 'c'. Model deltas for squared error:
     self.assertAllClose(client_result.update, [[[-1.0], [0.0]], -1.0])
-    self.assertAllClose(client_result.update_weight, 8.0)
-    self.assertDictContainsSubset({'num_examples': 8}, model_output)
+    self.assertAllClose(client_result.update_weight, 12.0)
+    expected = {'num_examples': 12}
+    self.assertEqual(model_output, {**model_output, **expected})
 
   @parameterized.named_parameters(
       ('dataset_reduce', loop_builder.LoopImplementation.DATASET_REDUCE),
@@ -122,8 +123,9 @@ class FederatedSgdTest(tf.test.TestCase, parameterized.TestCase):
     # Both trainable parameters should have gradients, and we don't return the
     # non-trainable 'c'. Model deltas for squared error:
     self.assertAllClose(client_result.update, [[[-1.0], [0.0]], -1.0, 0.0])
-    self.assertAllClose(client_result.update_weight, 8.0)
-    self.assertDictContainsSubset({'num_examples': 8}, model_output)
+    self.assertAllClose(client_result.update_weight, 12.0)
+    expected = {'num_examples': 12}
+    self.assertEqual(model_output, {**model_output, **expected})
 
   @parameterized.named_parameters(('_inf', np.inf), ('_nan', np.nan))
   def test_non_finite_aggregation(self, bad_value):
@@ -184,7 +186,7 @@ class FederatedSgdTest(tf.test.TestCase, parameterized.TestCase):
         model_aggregator=model_update_aggregator.secure_aggregator(),
         metrics_aggregator=aggregator.secure_sum_then_finalize,
     )
-    static_assert.assert_not_contains_unsecure_aggregation(
+    federated_language.framework.assert_not_contains_unsecure_aggregation(
         learning_process.next
     )
 
@@ -206,8 +208,9 @@ class FunctionalFederatedSgdTest(tf.test.TestCase, parameterized.TestCase):
     # Both trainable parameters should have gradients. Model deltas for squared
     # error:
     self.assertAllClose(client_result.update, [[[-2.0], [0.0]], -2.0])
-    self.assertAllClose(client_result.update_weight, 8.0)
-    self.assertDictContainsSubset({'num_examples': 8}, model_output)
+    self.assertAllClose(client_result.update_weight, 12.0)
+    expected = {'num_examples': 12}
+    self.assertEqual(model_output, {**model_output, **expected})
 
   @parameterized.named_parameters(
       ('dataset_reduce', loop_builder.LoopImplementation.DATASET_REDUCE),
@@ -226,8 +229,9 @@ class FunctionalFederatedSgdTest(tf.test.TestCase, parameterized.TestCase):
     # Both trainable parameters should have gradients. Model deltas for squared
     # error:
     self.assertAllClose(client_result.update, [[[-2.0], [0.0]], -2.0, 0.0])
-    self.assertAllClose(client_result.update_weight, 8.0)
-    self.assertDictContainsSubset({'num_examples': 8}, model_output)
+    self.assertAllClose(client_result.update_weight, 12.0)
+    expected = {'num_examples': 12}
+    self.assertEqual(model_output, {**model_output, **expected})
 
   @parameterized.named_parameters(('_inf', np.inf), ('_nan', np.nan))
   def test_non_finite_aggregation(self, bad_value):
@@ -283,7 +287,7 @@ class FunctionalFederatedSgdTest(tf.test.TestCase, parameterized.TestCase):
         model_aggregator=model_update_aggregator.secure_aggregator(),
         metrics_aggregator=aggregator.secure_sum_then_finalize,
     )
-    static_assert.assert_not_contains_unsecure_aggregation(
+    federated_language.framework.assert_not_contains_unsecure_aggregation(
         learning_process.next
     )
 

@@ -14,6 +14,7 @@
 
 import collections
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 import tensorflow_federated as tff
@@ -50,7 +51,9 @@ def construct_example_training_comp() -> tff.learning.templates.LearningProcess:
 
   return tff.learning.algorithms.build_weighted_fed_avg(
       model_fn,
-      client_optimizer_fn=lambda: tf.keras.optimizers.SGD(learning_rate=0.01),
+      client_optimizer_fn=tff.learning.optimizers.build_sgdm(
+          learning_rate=0.01
+      ),
   )
 
 
@@ -81,6 +84,9 @@ class MapReduceFormTest(tf.test.TestCase):
         '        float32[1]\n'
         '      >,\n'
         '      non_trainable=<>\n'
+        '    >,\n'
+        '    <\n'
+        '      learning_rate=float32\n'
         '    >\n'
         '  >\n'
         '> -> <\n'
@@ -144,7 +150,9 @@ class MapReduceFormTest(tf.test.TestCase):
     # against StructType.
     ip_1_result_type = ip_1.next.type_signature.result
     ip_2_result_type = ip_2.next.type_signature.result
-    tff.types.StructType(ip_1_result_type).check_equivalent_to(ip_2_result_type)
+    federated_language.StructType(ip_1_result_type).check_equivalent_to(
+        ip_2_result_type
+    )
 
     sample_batch = collections.OrderedDict(
         x=np.array([[1.0, 1.0]], dtype=np.float32),

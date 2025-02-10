@@ -19,6 +19,7 @@ from typing import Any, TypeVar
 import tensorflow as tf
 
 from tensorflow_federated.python.common_libs import structure
+from tensorflow_federated.python.learning.optimizers import nest_utils
 from tensorflow_federated.python.learning.optimizers import optimizer
 
 _EPSILON_KEY = 'epsilon'
@@ -26,7 +27,7 @@ _PRECONDITIONER_KEY = 'preconditioner'
 _HPARAMS_KEYS = [optimizer.LEARNING_RATE_KEY, _EPSILON_KEY]
 
 State = TypeVar('State', bound=collections.OrderedDict[str, Any])
-Hparams = TypeVar('Hparams', bound=collections.OrderedDict[str, float])
+Hparams = TypeVar('Hparams', bound=collections.OrderedDict[str, Any])
 
 
 class _Adagrad(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
@@ -39,16 +40,19 @@ class _Adagrad(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
       epsilon: optimizer.Float = 1e-7,
   ):
     """Initializes SGD optimizer."""
-    if learning_rate < 0.0:
+    if not tf.is_symbolic_tensor(learning_rate) and learning_rate < 0.0:
       raise ValueError(
           f'Adagrad `learning_rate` must be nonnegative, found {learning_rate}.'
       )
-    if initial_preconditioner_value < 0.0:
+    if (
+        not tf.is_symbolic_tensor(initial_preconditioner_value)
+        and initial_preconditioner_value < 0.0
+    ):
       raise ValueError(
           'Adagrad `initial_preconditioner_value` must be nonnegative, found '
           f'{initial_preconditioner_value}.'
       )
-    if epsilon < 0.0:
+    if not tf.is_symbolic_tensor(epsilon) and epsilon < 0.0:
       raise ValueError(f'Adagrad epsilon must be nonnegative, found {epsilon}.')
     self._lr = learning_rate
     self._initial_precond = initial_preconditioner_value
@@ -56,14 +60,15 @@ class _Adagrad(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
 
   def initialize(self, specs: Any) -> State:
     initial_preconditioner = tf.nest.map_structure(
-        lambda s: tf.ones(s.shape, s.dtype) * self._initial_precond, specs
+        lambda s: tf.ones(s.shape, s.dtype)
+        * tf.cast(self._initial_precond, s.dtype),
+        specs,
     )
-    state = collections.OrderedDict([
+    return collections.OrderedDict([
         (optimizer.LEARNING_RATE_KEY, self._lr),
         (_EPSILON_KEY, self._epsilon),
         (_PRECONDITIONER_KEY, initial_preconditioner),
     ])
-    return state
 
   def next(
       self, state: State, weights: optimizer.Weights, gradients: Any
@@ -77,16 +82,24 @@ class _Adagrad(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
         weights, preconditioner, 'preconditioner'
     )
 
-    updated_preconditioner = tf.nest.map_structure(
-        lambda a, g: a + tf.math.square(g), preconditioner, gradients
-    )
-    updated_weights = tf.nest.map_structure(
-        lambda w, g, a: w - lr * g / tf.math.sqrt(a + epsilon),
-        weights,
-        gradients,
-        updated_preconditioner,
-    )
+    def _adagrad_update(w, p, g):
+      if g is None:
+        return w, p
+      p = p + tf.math.square(g)
+      w = w - tf.cast(lr, g.dtype) * g / tf.math.sqrt(
+          p + tf.cast(epsilon, p.dtype)
+      )
+      return w, p
 
+    updated_weights, updated_preconditioner = nest_utils.map_at_leaves(
+        _adagrad_update,
+        weights,
+        preconditioner,
+        gradients,
+        # We have to tell `map_at_leaves` how many outputs to yield in case
+        # `weights` has no leaves.
+        num_outputs=2,
+    )
     updated_state = collections.OrderedDict([
         (optimizer.LEARNING_RATE_KEY, lr),
         (_EPSILON_KEY, epsilon),
@@ -98,11 +111,6 @@ class _Adagrad(optimizer.Optimizer[State, optimizer.Weights, Hparams]):
     return collections.OrderedDict([(k, state[k]) for k in _HPARAMS_KEYS])
 
   def set_hparams(self, state: State, hparams: Hparams) -> State:
-    # TODO: b/245962555 - Find an alternative to `update_struct` if it
-    # interferes with typing guarantees.
-    # We use `tff.structure.update_struct` (rather than something like
-    # `copy.deepcopy`) to ensure that this can be called within a
-    # `tff.Computation`.
     return structure.update_struct(state, **hparams)
 
 

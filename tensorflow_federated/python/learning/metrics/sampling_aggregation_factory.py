@@ -15,14 +15,12 @@
 
 from typing import Union
 
+import federated_language
+
 from tensorflow_federated.python.aggregators import factory
 from tensorflow_federated.python.aggregators import sampling
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
 from tensorflow_federated.python.core.templates import aggregation_process
 from tensorflow_federated.python.core.templates import measured_process
 from tensorflow_federated.python.learning.metrics import aggregation_utils
@@ -34,13 +32,15 @@ class FinalizeThenSampleFactory(factory.UnweightedAggregationFactory):
 
   The created `tff.templates.AggregationProcess` finalizes each client's metrics
   locally, and then collects metrics from at most `sample_size` clients at the
-  `tff.SERVER`. If more than `sample_size` clients participating, then
+  `federated_language.SERVER`. If more than `sample_size` clients participating,
+  then
   `sample_size` clients are sampled (by reservoir sampling algorithm);
   otherwise, all clients' metrics are collected. Sampling is done in a
   "per-client" manner, i.e., a client, once sampled, will contribute all its
   metrics to the final result.
 
-  The collected metrics samples at `tff.SERVER` has the same structure (i.e.,
+  The collected metrics samples at `federated_language.SERVER` has the same
+  structure (i.e.,
   same keys in a dictionary) as the client's local metrics, except that each
   leaf node contains a list of scalar metric values, where each value comes from
   a sampled client, e.g.,
@@ -60,7 +60,8 @@ class FinalizeThenSampleFactory(factory.UnweightedAggregationFactory):
   result is "total rounds samples").
 
   The `next` function of the created `tff.templates.AggregationProcess` takes
-  the `state` and local unfinalized metrics reported from `tff.CLIENTS`, and
+  the `state` and local unfinalized metrics reported from
+  `federated_language.CLIENTS`, and
   returns a `tff.templates.MeasuredProcessOutput` object with the following
   properties:
     - `state`: a dictionary of total rounds samples and the sampling metadata (
@@ -110,7 +111,7 @@ class FinalizeThenSampleFactory(factory.UnweightedAggregationFactory):
           types.MetricFinalizersType,
           types.FunctionalMetricFinalizersType,
       ],
-      local_unfinalized_metrics_type: computation_types.StructWithPythonType,
+      local_unfinalized_metrics_type: federated_language.StructWithPythonType,
   ) -> aggregation_process.AggregationProcess:
     """Creates a `tff.templates.AggregationProcess` for metrics aggregation.
 
@@ -125,7 +126,8 @@ class FinalizeThenSampleFactory(factory.UnweightedAggregationFactory):
         the later, the callable must compute over the same keyspace of the
         result returned by
         `tff.learning.models.FunctionalModel.update_metrics_state`.
-      local_unfinalized_metrics_type: A `tff.types.StructWithPythonType` (with
+      local_unfinalized_metrics_type: A
+        `federated_language.StructWithPythonType` (with
         `collections.OrderedDict` as the Python container) of a client's local
         unfinalized metrics.
 
@@ -158,7 +160,7 @@ class FinalizeThenSampleFactory(factory.UnweightedAggregationFactory):
         sample_size=self._sample_size, return_sampling_metadata=True
     ).create(local_finalized_metrics_type)
 
-    @federated_computation.federated_computation
+    @federated_language.federated_computation
     def init_fn():
       @tensorflow_computation.tf_computation
       def create_initial_sample_state():
@@ -166,8 +168,8 @@ class FinalizeThenSampleFactory(factory.UnweightedAggregationFactory):
             local_finalized_metrics_type
         )
 
-      return intrinsics.federated_eval(
-          create_initial_sample_state, placements.SERVER
+      return federated_language.federated_eval(
+          create_initial_sample_state, federated_language.SERVER
       )
 
     # We cannot directly use `init_fn.type_signature.result` as the server state
@@ -176,14 +178,14 @@ class FinalizeThenSampleFactory(factory.UnweightedAggregationFactory):
     # should use `None` to denote the shape that can change over rounds.
     state_type = sampling.build_reservoir_type(local_finalized_metrics_type)
 
-    @federated_computation.federated_computation(
-        computation_types.FederatedType(state_type, placements.SERVER),
-        computation_types.FederatedType(
-            local_unfinalized_metrics_type, placements.CLIENTS
+    @federated_language.federated_computation(
+        federated_language.FederatedType(state_type, federated_language.SERVER),
+        federated_language.FederatedType(
+            local_unfinalized_metrics_type, federated_language.CLIENTS
         ),
     )
     def next_fn(state, client_unfinalized_metrics):
-      local_finalized_metrics = intrinsics.federated_map(
+      local_finalized_metrics = federated_language.federated_map(
           local_finalize_computation, client_unfinalized_metrics
       )
       current_round_sampling_output = sampling_process.next(
@@ -192,7 +194,7 @@ class FinalizeThenSampleFactory(factory.UnweightedAggregationFactory):
       merge_samples_computation = sampling.build_merge_samples_computation(
           value_type=local_finalized_metrics_type, sample_size=self._sample_size
       )
-      new_state = intrinsics.federated_map(
+      new_state = federated_language.federated_map(
           merge_samples_computation,
           (state, current_round_sampling_output.result),
       )
@@ -200,7 +202,7 @@ class FinalizeThenSampleFactory(factory.UnweightedAggregationFactory):
       total_rounds_samples = new_state['samples']
       return measured_process.MeasuredProcessOutput(
           state=new_state,
-          result=intrinsics.federated_zip(
+          result=federated_language.federated_zip(
               (current_round_samples, total_rounds_samples)
           ),
           measurements=current_round_sampling_output.measurements,

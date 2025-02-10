@@ -89,7 +89,10 @@ jobs:
         gh release create "v${{ env.version }}" \
             --target="${{ github.sha }}" \
             --title="TensorFlow Federated ${{ env.version }}" \
-            --notes='${{ env.description }}'
+            --notes="$(cat <<'EOF'
+        ${{ env.description }}
+        EOF
+        )"
 
   build-package:
     name: Build Package
@@ -203,7 +206,6 @@ jobs:
           exit 1
         fi
         pip install --upgrade "${package}"
-        python -I -c "import tensorflow_federated as tff; print(tff.federated_computation(lambda: 'Hello World')())"
         python -I -c "import tensorflow_federated as tff; print(tff.__version__)"
 
   publish-package:

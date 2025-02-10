@@ -15,19 +15,18 @@
 
 from typing import Optional
 
+import federated_language
+from federated_language.proto import computation_pb2 as pb
 import numpy as np
 import tensorflow as tf
 
-from tensorflow_federated.proto.v0 import computation_pb2 as pb
 from tensorflow_federated.python.common_libs import structure
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import type_serialization
-from tensorflow_federated.python.core.impl.utils import tensorflow_utils
+from tensorflow_federated.python.core.environments.tensorflow_backend import tensorflow_utils
 
 
 def _stamp_value_into_graph(
     value: Optional[object],
-    type_signature: computation_types.Type,
+    type_signature: federated_language.Type,
     graph: tf.Graph,
 ) -> object:
   """Stamps `value` in `graph` as an object of type `type_signature`.
@@ -44,9 +43,9 @@ def _stamp_value_into_graph(
   """
   if value is None:
     return None
-  if isinstance(type_signature, computation_types.TensorType):
+  if isinstance(type_signature, federated_language.TensorType):
     if isinstance(value, np.ndarray) or tf.is_tensor(value):
-      value_type = computation_types.TensorType(value.dtype, value.shape)
+      value_type = federated_language.TensorType(value.dtype, value.shape)
       type_signature.check_assignable_from(value_type)
       with graph.as_default():
         return tf.constant(value)
@@ -57,7 +56,7 @@ def _stamp_value_into_graph(
             dtype=type_signature.dtype,  # pytype: disable=attribute-error
             shape=type_signature.shape,  # pytype: disable=attribute-error
         )
-  elif isinstance(type_signature, computation_types.StructType):
+  elif isinstance(type_signature, federated_language.StructType):
     if isinstance(value, (list, dict)):
       value = structure.from_container(value)
     stamped_elements = []
@@ -66,7 +65,7 @@ def _stamp_value_into_graph(
       stamped_element = _stamp_value_into_graph(element, type_signature, graph)
       stamped_elements.append((name, stamped_element))
     return structure.Struct(stamped_elements)
-  elif isinstance(type_signature, computation_types.SequenceType):
+  elif isinstance(type_signature, federated_language.SequenceType):
     return tensorflow_utils.make_data_set_from_elements(
         graph, value, type_signature.element
     )
@@ -90,12 +89,12 @@ def run_tensorflow(
     The result of the computation.
   """
   with tf.Graph().as_default() as graph:
-    type_signature = type_serialization.deserialize_type(computation_proto.type)
-    if type_signature.parameter is not None:  # pytype: disable=attribute-error
+    type_signature = federated_language.FunctionType.from_proto(
+        computation_proto.type
+    )
+    if type_signature.parameter is not None:
       stamped_arg = _stamp_value_into_graph(
-          arg,
-          type_signature.parameter,  # pytype: disable=attribute-error
-          graph,
+          arg, type_signature.parameter, graph
       )
     else:
       stamped_arg = None

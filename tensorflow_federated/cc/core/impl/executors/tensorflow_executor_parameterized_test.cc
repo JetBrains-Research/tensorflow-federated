@@ -30,6 +30,9 @@ limitations under the License
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
+#include "federated_language/proto/array.pb.h"
+#include "federated_language/proto/computation.pb.h"
+#include "federated_language/proto/data_type.pb.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_status.h"
@@ -43,8 +46,6 @@ limitations under the License
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow_federated/cc/core/impl/executors/array_shape_test_utils.h"
 #include "tensorflow_federated/cc/core/impl/executors/array_test_utils.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
@@ -53,9 +54,6 @@ limitations under the License
 #include "tensorflow_federated/cc/core/impl/executors/value_test_utils.h"
 #include "tensorflow_federated/cc/testing/protobuf_matchers.h"
 #include "tensorflow_federated/cc/testing/status_matchers.h"
-#include "tensorflow_federated/proto/v0/array.pb.h"
-#include "tensorflow_federated/proto/v0/computation.pb.h"
-#include "tensorflow_federated/proto/v0/data_type.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 ABSL_FLAG(std::string, reduce_graph_path, "",
@@ -65,7 +63,6 @@ namespace tensorflow_federated {
 namespace {
 
 using ::absl::StatusCode;
-using ::tensorflow_federated::testing::CreateSerializedRangeDatasetGraphDef;
 using ::tensorflow_federated::testing::EqualsProto;
 using ::tensorflow_federated::testing::SequenceV;
 using ::tensorflow_federated::testing::StructV;
@@ -76,24 +73,24 @@ using ::testing::HasSubstr;
 using ::testing::Types;
 
 template <class TfOp>
-inline v0::TensorFlow::Binding TensorB(const TfOp& op) {
+inline federated_language::TensorFlow::Binding TensorB(const TfOp& op) {
   const tensorflow::Node* node = op.node();
-  v0::TensorFlow::Binding binding;
+  federated_language::TensorFlow::Binding binding;
   *binding.mutable_tensor()->mutable_tensor_name() = node->name();
   return binding;
 }
 
 template <class TfOp>
-inline v0::TensorFlow::Binding SequenceB(const TfOp& op) {
+inline federated_language::TensorFlow::Binding SequenceB(const TfOp& op) {
   const tensorflow::Node* node = op.node();
-  v0::TensorFlow::Binding binding;
+  federated_language::TensorFlow::Binding binding;
   *binding.mutable_sequence()->mutable_variant_tensor_name() = node->name();
   return binding;
 }
 
-inline v0::TensorFlow::Binding StructB(
-    const absl::Span<const v0::TensorFlow::Binding> elements) {
-  v0::TensorFlow::Binding binding;
+inline federated_language::TensorFlow::Binding StructB(
+    const absl::Span<const federated_language::TensorFlow::Binding> elements) {
+  federated_language::TensorFlow::Binding binding;
   auto struct_mut = binding.mutable_struct_();
   for (const auto& element : elements) {
     *struct_mut->add_element() = element;
@@ -124,16 +121,17 @@ ExecutorId ExecutorType<TensorflowExecutor>() {
   return kTensorFlowExecutor;
 }
 inline v0::Value ComputationV(
-    std::optional<v0::TensorFlow::Binding> in_binding,
-    v0::TensorFlow::Binding out_binding, const tensorflow::Scope& scope,
+    std::optional<federated_language::TensorFlow::Binding> in_binding,
+    federated_language::TensorFlow::Binding out_binding,
+    const tensorflow::Scope& scope,
     const std::optional<const tensorflow::Operation>& init_op = std::nullopt) {
   v0::Value value_pb;
-  v0::Computation* comp_pb = value_pb.mutable_computation();
+  federated_language::Computation* comp_pb = value_pb.mutable_computation();
   // NOTE: we do not fill in the `type` field of `comp` because it is not needed
   // by the C++ TensorFlow executor.
-  v0::TensorFlow* tensorflow_pb = comp_pb->mutable_tensorflow();
+  federated_language::TensorFlow* tensorflow_pb = comp_pb->mutable_tensorflow();
   tensorflow::GraphDef graphdef_pb;
-  tensorflow::Status status = scope.ToGraphDef(&graphdef_pb);
+  absl::Status status = scope.ToGraphDef(&graphdef_pb);
   CHECK(status.ok()) << status;
   tensorflow_pb->mutable_graph_def()->PackFrom(graphdef_pb);
   if (in_binding.has_value()) {
@@ -282,10 +280,10 @@ char const* const kReduceResultOutputTensorName = "result_tensor";
 // input dataset of `int64_t`s and return the sum of the elements.
 v0::Value CreateDatasetReduceComputationV() {
   v0::Value value_pb;
-  v0::Computation* comp_pb = value_pb.mutable_computation();
+  federated_language::Computation* comp_pb = value_pb.mutable_computation();
   // NOTE: we do not fill in the `type` field of `comp` because it is not needed
   // by the C++ TensorFlow executor.
-  v0::TensorFlow* tensorflow_pb = comp_pb->mutable_tensorflow();
+  federated_language::TensorFlow* tensorflow_pb = comp_pb->mutable_tensorflow();
   std::string reduce_graph_path = absl::GetFlag(FLAGS_reduce_graph_path);
   tensorflow::GraphDef graphdef_pb = LoadGraph(reduce_graph_path.c_str());
   tensorflow_pb->mutable_graph_def()->PackFrom(graphdef_pb);
@@ -334,27 +332,19 @@ TYPED_TEST(TensorFlowBasedExecutorsTest, RoundTripStructOfNestedTensors) {
 }
 
 TYPED_TEST(TensorFlowBasedExecutorsTest, RoundTripSequence) {
-  tensorflow::tstring graph_def = CreateSerializedRangeDatasetGraphDef(
-      /*start=*/0, /*stop=*/10, /*step=*/1);
-  v0::Value value_pb;
-  v0::Value::Sequence* sequence_pb = value_pb.mutable_sequence();
-  *sequence_pb->mutable_serialized_graph_def() =
-      std::string(graph_def.data(), graph_def.size());
+  v0::Value value_pb = SequenceV(0, 2, 1);
   // We can't simply `this->CheckRoundTrip` because the serialized graph defs
   // don't have deterministic node orders.
   TFF_ASSERT_OK_AND_ASSIGN(OwnedValueId id,
                            this->test_executor_->CreateValue(value_pb));
   v0::Value output_pb;
   EXPECT_THAT(this->test_executor_->Materialize(id, &output_pb), IsOk());
-  // Compare GraphDef protos without ordering.
-  tensorflow::GraphDef input_graph_def;
-  ASSERT_TRUE(input_graph_def.ParseFromString(graph_def));
-  tensorflow::GraphDef materialized_graph_def;
-  ASSERT_TRUE(materialized_graph_def.ParseFromString(
-      output_pb.sequence().serialized_graph_def()));
-  EXPECT_THAT(materialized_graph_def,
-              testing::proto::IgnoringRepeatedFieldOrdering(
-                  EqualsProto(input_graph_def)));
+  // Compare elements without ordering, output_pb will not have an element_type
+  // because ExecutorValue does not have a type.
+  output_pb.mutable_sequence()->mutable_element_type()->Clear();
+  value_pb.mutable_sequence()->mutable_element_type()->Clear();
+  EXPECT_THAT(output_pb, testing::proto::IgnoringRepeatedFieldOrdering(
+                             EqualsProto(value_pb)));
 }
 
 TYPED_TEST(TensorFlowBasedExecutorsTest, CreateStructOneElement) {
@@ -610,12 +600,14 @@ class TensorFlowExecutorTest : public ::testing::Test {
 };
 
 TEST_F(TensorFlowExecutorTest, CreateValueComputationLiteralReturnsResult) {
-  const v0::DataType dtype = v0::DataType::DT_INT32;
-  v0::ArrayShape shape_pb = testing::CreateArrayShape({});
+  const federated_language::DataType dtype =
+      federated_language::DataType::DT_INT32;
+  federated_language::ArrayShape shape_pb = testing::CreateArrayShape({});
   auto values = {1};
-  v0::Array array_pb =
+  federated_language::Array array_pb =
       TFF_ASSERT_OK(testing::CreateArray(dtype, shape_pb, values));
-  v0::Computation computation_pb = testing::LiteralComputation(array_pb);
+  federated_language::Computation computation_pb =
+      testing::LiteralComputation(array_pb);
   v0::Value value_pb = testing::ComputationV(computation_pb);
 
   const OwnedValueId& embedded_fn =

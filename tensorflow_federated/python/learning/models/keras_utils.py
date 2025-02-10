@@ -19,14 +19,12 @@ from typing import Optional, Union
 import warnings
 
 from absl import logging
+import federated_language
 import tensorflow as tf
 
 from tensorflow_federated.python.common_libs import py_typecheck
+from tensorflow_federated.python.core.environments.tensorflow_backend import type_conversions
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import type_analysis
-from tensorflow_federated.python.core.impl.types import type_conversions
 from tensorflow_federated.python.learning.metrics import counters
 from tensorflow_federated.python.learning.metrics import keras_finalizer
 from tensorflow_federated.python.learning.models import variable
@@ -82,8 +80,8 @@ def from_keras_model(
       list, then each loss is expected to correspond to a model output; the
       model will attempt to minimize the sum of all individual losses
       (optionally weighted using the `loss_weights` argument).
-    input_spec: A structure of `tf.TensorSpec`s or `tff.Type` specifying the
-      type of arguments the model expects. If `input_spec` is a `tff.Type`, its
+    input_spec: A structure of `tf.TensorSpec`s or `federated_language.Type` specifying the
+      type of arguments the model expects. If `input_spec` is a `federated_language.Type`, its
       leaf nodes must be `TensorType`s. Note that `input_spec` must be a
       compound structure of two elements, specifying both the data fed into the
       model (x) to generate predictions as well as the expected type of the
@@ -106,8 +104,8 @@ def from_keras_model(
   Raises:
     TypeError: If `keras_model` is not an instance of `tf.keras.Model`, if
       `loss` is not an instance of `tf.keras.losses.Loss` nor a list of
-      instances of `tf.keras.losses.Loss`, if `input_spec` is a `tff.Type` but
-      the leaf nodes are not `tff.TensorType`s, if `loss_weight` is provided but
+      instances of `tf.keras.losses.Loss`, if `input_spec` is a `federated_language.Type` but
+      the leaf nodes are not `federated_language.TensorType`s, if `loss_weight` is provided but
       is not a list of floats, or if `metrics` is provided but is not a list of
       instances of `tf.keras.metrics.Metric`.
     ValueError: If `keras_model` was compiled, if `loss` is a list of unequal
@@ -161,11 +159,13 @@ def from_keras_model(
         'information for both inputs to and predictions from the '
         'model. You passed input spec {}.'.format(input_spec)
     )
-  if isinstance(input_spec, computation_types.Type):
-    if not type_analysis.is_structure_of_tensors(input_spec):
+  if isinstance(input_spec, federated_language.Type):
+    if not federated_language.framework.is_structure_of_tensors(input_spec):
       raise TypeError(
-          'Expected a `tff.Type` with all the leaf nodes being '
-          '`tff.TensorType`s, found an input spec {}.'.format(input_spec)
+          'Expected a `federated_language.Type` with all the leaf nodes being '
+          '`federated_language.TensorType`s, found an input spec {}.'.format(
+              input_spec
+          )
       )
     input_spec = type_conversions.structure_from_tensor_type_tree(
         lambda tensor_type: tf.TensorSpec(tensor_type.shape, tensor_type.dtype),
@@ -234,14 +234,15 @@ def federated_aggregate_keras_metric(
       `tf.keras.metrics.Metric`. The order must match the order of variables in
       `federated_values`.
     federated_values: A single federated value, or a `Sequence` of federated
-      values. The values must all have `tff.CLIENTS` placement. If value is a
-      `Sequence` type, it must match the order of the sequence in `metrics.
+      values. The values must all have `federated_language.CLIENTS` placement.
+      If value is a `Sequence` type, it must match the order of the sequence in
+      `metrics.
 
   Returns:
     The result of performing a federated sum on federated_values, then assigning
     the aggregated values into the variables of the corresponding
     `tf.keras.metrics.Metric` and calling `tf.keras.metrics.Metric.result`. The
-    resulting structure has `tff.SERVER` placement.
+    resulting structure has `federated_language.SERVER` placement.
   """
   member_types = tf.nest.map_structure(
       lambda t: t.type_signature.member, federated_values
@@ -296,14 +297,12 @@ def federated_aggregate_keras_metric(
       return finalize_metric(metrics, accumulators)
     else:
       # Otherwise map over all the metrics.
-      return collections.OrderedDict(
-          [
-              (name, finalize_metric(metric, values))
-              for metric, (name, values) in zip(metrics, accumulators.items())
-          ]
-      )
+      return collections.OrderedDict([
+          (name, finalize_metric(metric, values))
+          for metric, (name, values) in zip(metrics, accumulators.items())
+      ])
 
-  return intrinsics.federated_aggregate(
+  return federated_language.federated_aggregate(
       federated_values, zeros, accumulate, merge, report
   )
 

@@ -18,6 +18,7 @@ from collections.abc import Callable
 import functools
 from typing import Optional, Union
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 
@@ -25,10 +26,7 @@ from tensorflow_federated.python.aggregators import factory
 from tensorflow_federated.python.aggregators import mean
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
+from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_types
 from tensorflow_federated.python.core.templates import measured_process
 from tensorflow_federated.python.learning import client_weight_lib
 from tensorflow_federated.python.learning import loop_builder
@@ -46,17 +44,13 @@ from tensorflow_federated.python.learning.templates import distributors
 from tensorflow_federated.python.learning.templates import learning_process
 from tensorflow_federated.python.learning.templates import model_delta_client_work
 
-TFFOrKerasOptimizer = Union[
-    optimizer_base.Optimizer, tf.keras.optimizers.Optimizer
-]
-
 
 def build_scheduled_client_work(
     model_fn: Union[
         Callable[[], variable.VariableModel], functional.FunctionalModel
     ],
     learning_rate_fn: Callable[[int], float],
-    optimizer_fn: Callable[[float], TFFOrKerasOptimizer],
+    optimizer_fn: Callable[[float], optimizer_base.Optimizer],
     metrics_aggregator: types.MetricsAggregatorType,
     loop_implementation: loop_builder.LoopImplementation = loop_builder.LoopImplementation.DATASET_REDUCE,
 ) -> client_works.ClientWorkProcess:
@@ -79,15 +73,14 @@ def build_scheduled_client_work(
       client work will call `optimizer_fn(learning_rate_fn(round_num))` where
       `round_num` is the integer round number.
     optimizer_fn: A callable accepting a float learning rate, and returning a
-      `tff.learning.optimizers.Optimizer` or a `tf.keras.Optimizer`. If
-      `model_fn` is a `FunctionalModel`, must be a
       `tff.learning.optimizers.Optimizer`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -100,7 +93,7 @@ def build_scheduled_client_work(
     if isinstance(model_fn, functional.FunctionalModel):
       whimsy_model = model_fn
       weights_type = tf.nest.map_structure(
-          lambda arr: computation_types.TensorType(
+          lambda arr: federated_language.TensorType(
               dtype=arr.dtype, shape=arr.shape
           ),
           model_weights.ModelWeights(*whimsy_model.initial_weights),
@@ -109,9 +102,6 @@ def build_scheduled_client_work(
     else:
       whimsy_model = model_fn()
       weights_type = model_weights.weights_type_from_model(whimsy_model)
-      metrics_aggregation_fn = metrics_aggregator(
-          whimsy_model.metric_finalizers(),
-      )
       metrics_aggregation_fn = metrics_aggregator(
           whimsy_model.metric_finalizers(),
       )
@@ -124,8 +114,8 @@ def build_scheduled_client_work(
           'If model_fn is a `FunctionalModel`, `optimizer_fn` must be a '
           f'tff.learning.optimizers.Optimizer, got {type(optimizer_fn)=}'
       )
-  element_type = computation_types.tensorflow_to_type(whimsy_model.input_spec)
-  data_type = computation_types.SequenceType(element_type)
+  element_type = tensorflow_types.to_type(whimsy_model.input_spec)
+  data_type = federated_language.SequenceType(element_type)
 
   if isinstance(model_fn, functional.FunctionalModel):
     build_client_update_fn = (
@@ -153,9 +143,9 @@ def build_scheduled_client_work(
     )
     return client_update(optimizer, initial_model_weights, dataset)
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def init_fn():
-    return intrinsics.federated_value(0, placements.SERVER)
+    return federated_language.federated_value(0, federated_language.SERVER)
 
   @tensorflow_computation.tf_computation(np.int32)
   @tf.function
@@ -167,23 +157,25 @@ def build_scheduled_client_work(
   def tf_learning_rate_fn(x):
     return learning_rate_fn(x)
 
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       init_fn.type_signature.result,
-      computation_types.FederatedType(weights_type, placements.CLIENTS),
-      computation_types.FederatedType(data_type, placements.CLIENTS),
+      federated_language.FederatedType(
+          weights_type, federated_language.CLIENTS
+      ),
+      federated_language.FederatedType(data_type, federated_language.CLIENTS),
   )
   def next_fn(state, weights, client_data):
-    round_num_at_clients = intrinsics.federated_broadcast(state)
+    round_num_at_clients = federated_language.federated_broadcast(state)
     # We also compute the learning rate at the server, in order to expose the
     # measurement to the user.
-    learning_rate = intrinsics.federated_map(tf_learning_rate_fn, state)
+    learning_rate = federated_language.federated_map(tf_learning_rate_fn, state)
     # TODO: b/268530457 - Determine if we can broadcast the learning rate.
-    client_result, model_outputs = intrinsics.federated_map(
+    client_result, model_outputs = federated_language.federated_map(
         client_update_computation, (weights, client_data, round_num_at_clients)
     )
-    updated_state = intrinsics.federated_map(add_one, state)
+    updated_state = federated_language.federated_map(add_one, state)
     train_metrics = metrics_aggregation_fn(model_outputs)
-    measurements = intrinsics.federated_zip(
+    measurements = federated_language.federated_zip(
         collections.OrderedDict(
             train=train_metrics, client_learning_rate=learning_rate
         )
@@ -200,12 +192,8 @@ def build_weighted_fed_avg_with_optimizer_schedule(
         Callable[[], variable.VariableModel], functional.FunctionalModel
     ],
     client_learning_rate_fn: Callable[[int], float],
-    client_optimizer_fn: Callable[[float], TFFOrKerasOptimizer],
-    server_optimizer_fn: Union[
-        optimizer_base.Optimizer,
-        Callable[[], tf.keras.optimizers.Optimizer],
-        None,
-    ] = None,
+    client_optimizer_fn: Callable[[float], optimizer_base.Optimizer],
+    server_optimizer_fn: Optional[optimizer_base.Optimizer] = None,
     model_distributor: Optional[distributors.DistributionProcess] = None,
     model_aggregator: Optional[factory.WeightedAggregationFactory] = None,
     metrics_aggregator: Optional[types.MetricsAggregatorType] = None,
@@ -227,21 +215,25 @@ def build_weighted_fed_avg_with_optimizer_schedule(
   client models. The iterative process has the following methods inherited from
   `LearningProcess`:
 
-  *   `initialize`: A `tff.Computation` with the functional type signature
+  *   `initialize`: A `federated_language.Computation` with the functional type
+  signature
       `( -> S@SERVER)`, where `S` is a `LearningAlgorithmState` representing the
       initial state of the server.
-  *   `next`: A `tff.Computation` with the functional type signature
+  *   `next`: A `federated_language.Computation` with the functional type
+  signature
       `(<S@SERVER, {B*}@CLIENTS> -> <L@SERVER>)` where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `{B*}@CLIENTS` represents the client datasets.
       The output `L` contains the updated server state, as well as aggregated
       metrics at the server, including client training metrics and any other
       metrics from distribution and aggregation processes.
-  *   `get_model_weights`: A `tff.Computation` with type signature `(S -> M)`,
+  *   `get_model_weights`: A `federated_language.Computation` with type
+  signature `(S -> M)`,
       where `S` is a `tff.learning.templates.LearningAlgorithmState` whose type
       matches the output of `initialize` and `next`, and `M` represents the type
       of the model weights used during training.
-  *   `set_model_weights`: A `tff.Computation` with type signature
+  *   `set_model_weights`: A `federated_language.Computation` with type
+  signature
       `(<S, M> -> S)`, where `S` is a
       `tff.learning.templates.LearningAlgorithmState` whose type matches the
       output of `initialize` and `M` represents the type of the model weights
@@ -256,7 +248,7 @@ def build_weighted_fed_avg_with_optimizer_schedule(
   thoughout local training. The aggregate model delta is applied at the server
   using a server optimizer.
 
-  Note: the default server optimizer function is `tf.keras.optimizers.SGD`
+  Note: the default server optimizer function is SGD
   with a learning rate of 1.0, which corresponds to adding the model delta to
   the current server model. This recovers the original FedAvg algorithm in
   [McMahan et al., 2017](https://arxiv.org/abs/1602.05629). More
@@ -278,9 +270,8 @@ def build_weighted_fed_avg_with_optimizer_schedule(
       called on the resulting process. Also note that this function must be
       serializable by TFF.
     client_optimizer_fn: A callable accepting a float learning rate, and
-      returning a `tff.learning.optimizers.Optimizer` or a `tf.keras.Optimizer`.
-    server_optimizer_fn: A `tff.learning.optimizers.Optimizer`, a no-arg
-      callable that returns a `tf.keras.Optimizer`, or None. By default, this
+      returning a `tff.learning.optimizers.Optimizer.
+    server_optimizer_fn: A `tff.learning.optimizers.Optimizer`. By default, this
       uses `tff.learning.optimizers.build_sgdm` with a learning rate of 1.0.
     model_distributor: An optional `DistributionProcess` that distributes the
       model weights on the server to the clients. If set to `None`, the
@@ -290,11 +281,12 @@ def build_weighted_fed_avg_with_optimizer_schedule(
       `tff.aggregators.MeanFactory`.
     metrics_aggregator: A function that takes in the metric finalizers (i.e.,
       `tff.learning.models.VariableModel.metric_finalizers()`) and a
-      `tff.types.StructWithPythonType` of the unfinalized metrics (i.e., the TFF
-      type of
+      `federated_language.StructWithPythonType` of the unfinalized metrics
+      (i.e., the TFF type of
       `tff.learning.models.VariableModel.report_local_unfinalized_metrics()`),
-      and returns a `tff.Computation` for aggregating the unfinalized metrics.
-      If `None`, this is set to `tff.learning.metrics.sum_then_finalize`.
+      and returns a `federated_language.Computation` for aggregating the
+      unfinalized metrics. If `None`, this is set to
+      `tff.learning.metrics.sum_then_finalize`.
     loop_implementation: Changes the implementation of the training loop
       generated. See `tff.learning.LoopImplementation` for more details.
 
@@ -320,7 +312,7 @@ def build_weighted_fed_avg_with_optimizer_schedule(
     model_aggregator = mean.MeanFactory()
   py_typecheck.check_type(model_aggregator, factory.WeightedAggregationFactory)
   aggregator = model_aggregator.create(
-      model_weights_type.trainable, computation_types.TensorType(np.float32)
+      model_weights_type.trainable, federated_language.TensorType(np.float32)
   )
   process_signature = aggregator.next.type_signature
   input_client_value_type = process_signature.parameter[1]  # pytype: disable=unsupported-operands

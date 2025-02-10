@@ -13,10 +13,8 @@
 # limitations under the License.
 """Defines a template for a stateful process that aggregates values."""
 
+import federated_language
 from tensorflow_federated.python.common_libs import structure
-from tensorflow_federated.python.core.impl.computation import computation_base
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
 from tensorflow_federated.python.core.templates import errors
 from tensorflow_federated.python.core.templates import measured_process
 
@@ -55,10 +53,12 @@ class AggregationProcess(measured_process.MeasuredProcess):
     - Actual aggregation.
     - A post-aggregation computation placed at `SERVER`.
   The second step can be realized by direct application of appropriate intrinsic
-  such as `tff.federated_sum`, or by delegation to (one or more) "inner"
+  such as `federated_language.federated_sum`, or by delegation to (one or more)
+  "inner"
   aggregation processes.
 
-  Both `initialize` and `next` must be `tff.Computation`s with the following
+  Both `initialize` and `next` must be `federated_language.Computation`s with
+  the following
   type signatures:
     - initialize: `( -> S@SERVER)`
     - next: `(<S@SERVER, V@CLIENTS, *> ->
@@ -73,25 +73,27 @@ class AggregationProcess(measured_process.MeasuredProcess):
 
   def __init__(
       self,
-      initialize_fn: computation_base.Computation,
-      next_fn: computation_base.Computation,
+      initialize_fn: federated_language.framework.Computation,
+      next_fn: federated_language.framework.Computation,
   ):
     """Creates a `tff.templates.AggregationProcess`.
 
     Args:
-      initialize_fn: A no-arg `tff.Computation` that returns the initial state
-        of the aggregation process. The returned state must be a server-placed
-        federated value. Let the type of this state be called `S@SERVER`.
-      next_fn: A `tff.Computation` that represents the iterated function.
-        `next_fn` must accept at least two arguments, the first of which is of a
-        type assignable from the state type `S@SERVER` and the second of which
-        is client-placed data of type `V@CLIENTS`. `next_fn` must return a
-        `MeasuredProcessOutput` where the `state` attribute is assignable to the
-        first argument and the `result` is value placed at `SERVER`.
+      initialize_fn: A no-arg `federated_language.Computation` that returns the
+        initial state of the aggregation process. The returned state must be a
+        server-placed federated value. Let the type of this state be called
+        `S@SERVER`.
+      next_fn: A `federated_language.Computation` that represents the iterated
+        function. `next_fn` must accept at least two arguments, the first of
+        which is of a type assignable from the state type `S@SERVER` and the
+        second of which is client-placed data of type `V@CLIENTS`. `next_fn`
+        must return a `MeasuredProcessOutput` where the `state` attribute is
+        assignable to the first argument and the `result` is value placed at
+        `SERVER`.
 
     Raises:
       TypeError: If `initialize_fn` and `next_fn` are not instances of
-        `tff.Computation`.
+        `federated_language.Computation`.
       TemplateInitFnParamNotEmptyError: If `initialize_fn` has any input
         arguments.
       TemplateStateNotAssignableError: If the `state` returned by either
@@ -112,13 +114,13 @@ class AggregationProcess(measured_process.MeasuredProcess):
     super().__init__(initialize_fn, next_fn, next_is_multi_arg=True)
 
     if not isinstance(
-        initialize_fn.type_signature.result, computation_types.FederatedType
+        initialize_fn.type_signature.result, federated_language.FederatedType
     ):
       raise AggregationNotFederatedError(
           'Provided `initialize_fn` must return a federated type, but found '
           f'return type:\n{initialize_fn.type_signature.result}\nTip: If you '
           'see a collection of federated types, try wrapping the returned '
-          'value in `tff.federated_zip` before returning.'
+          'value in `federated_language.federated_zip` before returning.'
       )
     next_types = structure.flatten(
         next_fn.type_signature.parameter
@@ -126,18 +128,21 @@ class AggregationProcess(measured_process.MeasuredProcess):
     non_federated_types = [
         t
         for t in next_types
-        if not isinstance(t, computation_types.FederatedType)
+        if not isinstance(t, federated_language.FederatedType)
     ]
     if non_federated_types:
       offending_types_str = '\n- '.join(str(t) for t in non_federated_types)
       raise AggregationNotFederatedError(
           'Provided `next_fn` must both be a *federated* computations, that '
-          'is, operate on `tff.FederatedType`s, but found\n'
+          'is, operate on `federated_language.FederatedType`s, but found\n'
           f'next_fn with type signature:\n{next_fn.type_signature}\n'
           f'The non-federated types are:\n {offending_types_str}.'
       )
 
-    if initialize_fn.type_signature.result.placement != placements.SERVER:
+    if (
+        initialize_fn.type_signature.result.placement
+        != federated_language.SERVER
+    ):
       raise AggregationPlacementError(
           'The state controlled by an `AggregationProcess` must be placed at '
           f'the SERVER, but found type: {initialize_fn.type_signature.result}.'
@@ -154,26 +159,29 @@ class AggregationProcess(measured_process.MeasuredProcess):
           f'the following input type: {next_fn_param}.'
       )
 
-    if next_fn_param[_INPUT_PARAM_INDEX].placement != placements.CLIENTS:
+    if (
+        next_fn_param[_INPUT_PARAM_INDEX].placement
+        != federated_language.CLIENTS
+    ):
       raise AggregationPlacementError(
           'The second input argument of `next_fn` must be placed at CLIENTS '
           f'but found {next_fn_param[_INPUT_PARAM_INDEX]}.'
       )
 
-    if next_fn_result.result.placement != placements.SERVER:
+    if next_fn_result.result.placement != federated_language.SERVER:
       raise AggregationPlacementError(
           'The "result" attribute of return type of `next_fn` must be placed '
           f'at SERVER, but found {next_fn_result.result}.'
       )
-    if next_fn_result.measurements.placement != placements.SERVER:
+    if next_fn_result.measurements.placement != federated_language.SERVER:
       raise AggregationPlacementError(
           'The "measurements" attribute of return type of `next_fn` must be '
           f'placed at SERVER, but found {next_fn_result.measurements}.'
       )
 
   @property
-  def next(self) -> computation_base.Computation:
-    """A `tff.Computation` that runs one iteration of the process.
+  def next(self) -> federated_language.framework.Computation:
+    """A `federated_language.Computation` that runs one iteration of the process.
 
     Its first argument should always be the current state (originally produced
     by the `initialize` attribute), the second argument must be the input placed
@@ -181,7 +189,7 @@ class AggregationProcess(measured_process.MeasuredProcess):
     `tff.templates.MeasuredProcessOutput` with each field placed at `SERVER`.
 
     Returns:
-      A `tff.Computation`.
+      A `federated_language.Computation`.
     """
     return super().next
 

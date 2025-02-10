@@ -19,7 +19,6 @@ limitations under the License
 #include <cstring>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,6 +31,7 @@ limitations under the License
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_factory.h"
@@ -39,7 +39,6 @@ limitations under the License
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow_federated/cc/core/impl/executors/status_macros.h"
@@ -98,7 +97,7 @@ const AcceleratorDevices& GetAcceleratorDevices() {
     int16_t num_gpus = 0;
     int16_t num_tpus = 0;
     std::vector<std::string> devices;
-    tensorflow::Status s =
+    absl::Status s =
         tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
     if (!s.ok()) {
       LOG(ERROR) << "Error detecting physical devices, defaulting to CPU only: "
@@ -107,8 +106,8 @@ const AcceleratorDevices& GetAcceleratorDevices() {
     }
     LOG_FIRST_N(INFO, 1) << "Found devices: [" << absl::StrJoin(devices, ",")
                          << "]";
-    for (std::string_view device : devices) {
-      std::vector<std::string_view> device_parts = absl::StrSplit(device, ':');
+    for (absl::string_view device : devices) {
+      std::vector<absl::string_view> device_parts = absl::StrSplit(device, ':');
       if (device_parts.size() != 3) {
         LOG(ERROR) << "Unknown device name format: [" << device << "]";
         continue;
@@ -131,7 +130,7 @@ const AcceleratorDevices& GetAcceleratorDevices() {
   return *accelerator_devices;
 }
 
-void SetDevice(std::string_view device, tensorflow::GraphDef* graph_def,
+void SetDevice(absl::string_view device, tensorflow::GraphDef* graph_def,
                const char* device_type) {
   for (tensorflow::NodeDef& node_pb : *graph_def->mutable_node()) {
     // Annotating ReduceDataset with _xla_compile_device_type will denote to
@@ -275,7 +274,7 @@ SessionProvider::CreateSession(const int16_t session_id) {
   auto status = session->Create(graph_def);
   if (!status.ok()) {
     LOG(ERROR) << status;
-    for (std::string_view line :
+    for (absl::string_view line :
          absl::StrSplit(graph_def.Utf8DebugString(), '\n')) {
       LOG(ERROR) << line;
     }

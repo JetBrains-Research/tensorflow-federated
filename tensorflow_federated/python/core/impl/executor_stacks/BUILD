@@ -19,14 +19,12 @@ licenses(["notice"])
 py_library(
     name = "executor_stacks",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
     visibility = ["//tools/python_package:python_package_tool"],
 )
 
 py_library(
     name = "cpp_executor_factory",
     srcs = ["cpp_executor_factory.py"],
-    srcs_version = "PY3",
     tags = [
         "nokokoro",  # b/193543632: C++ execution is not fully supported in OSS.
     ],
@@ -34,11 +32,9 @@ py_library(
         ":executor_stack_bindings",
         "//tensorflow_federated/python/common_libs:py_typecheck",
         "//tensorflow_federated/python/core/impl/executors:cpp_to_python_executor",
-        "//tensorflow_federated/python/core/impl/executors:executor_base",
         "//tensorflow_federated/python/core/impl/executors:executor_bindings",
-        "//tensorflow_federated/python/core/impl/executors:executor_factory",
         "//tensorflow_federated/python/core/impl/executors:executors_errors",
-        "//tensorflow_federated/python/core/impl/types:placements",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -50,11 +46,9 @@ py_test(
     ],
     deps = [
         ":cpp_executor_factory",
-        "//tensorflow_federated/python/core/impl/executors:executor_base",
         "//tensorflow_federated/python/core/impl/executors:executor_bindings",
-        "//tensorflow_federated/python/core/impl/executors:executor_factory",
         "//tensorflow_federated/python/core/impl/executors:executor_test_utils_bindings",
-        "//tensorflow_federated/python/core/impl/types:placements",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -65,17 +59,15 @@ py_library(
     tags = ["ignore_for_dep=third_party.py.IPython.get_ipython"],
     deps = [
         ":python_executor_stacks",
-        "//tensorflow_federated/python/core/impl/executors:executor_factory",
         "//tensorflow_federated/python/core/impl/executors:remote_executor",
         "//tensorflow_federated/python/core/impl/executors:remote_executor_grpc_stub",
-        "//tensorflow_federated/python/core/impl/types:placements",
+        "@federated_language//federated_language",
     ],
 )
 
 py_library(
     name = "executor_stack_bindings",
     srcs = ["executor_stack_bindings.py"],
-    srcs_version = "PY3",
     tags = [
         "nokokoro",  # b/193543632: C++ execution is not fully supported in OSS.
     ],
@@ -83,7 +75,7 @@ py_library(
         "//tensorflow_federated/cc/core/impl/executor_stacks:executor_stack_bindings",
         "//tensorflow_federated/python/core/impl/executors:data_conversions",
         "//tensorflow_federated/python/core/impl/executors:executor_bindings",
-        "//tensorflow_federated/python/core/impl/types:placements",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -96,18 +88,16 @@ py_test(
     deps = [
         ":executor_stack_bindings",
         "//tensorflow_federated/python/core/impl/executors:executor_bindings",
-        "//tensorflow_federated/python/core/impl/types:placements",
+        "@federated_language//federated_language",
     ],
 )
 
 py_library(
     name = "python_executor_stacks",
     srcs = ["python_executor_stacks.py"],
-    srcs_version = "PY3",
     deps = [
         "//tensorflow_federated/python/common_libs:py_typecheck",
-        "//tensorflow_federated/python/core/impl/executors:executor_base",
-        "//tensorflow_federated/python/core/impl/executors:executor_factory",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -118,8 +108,6 @@ py_test(
     shard_count = 5,
     deps = [
         ":python_executor_stacks",
-        "//tensorflow_federated/python/core/impl/executors:executor_base",
-        "//tensorflow_federated/python/core/impl/executors:executor_factory",
-        "//tensorflow_federated/python/core/impl/types:placements",
+        "@federated_language//federated_language",
     ],
 )

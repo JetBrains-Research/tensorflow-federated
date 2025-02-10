@@ -17,19 +17,20 @@ from collections.abc import Sequence
 import random
 from typing import Optional
 
+import federated_language
 import numpy as np
 
-from tensorflow_federated.python.common_libs import py_typecheck
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
-from tensorflow_federated.python.program import data_source
 from tensorflow_federated.python.program import serialization_utils
 
 
-class ClientIdDataSourceIterator(data_source.FederatedDataSourceIterator):
-  """A `tff.program.FederatedDataSourceIterator` backed by client ids.
+class ClientIdDataSourceIterator(
+    federated_language.program.FederatedDataSourceIterator
+):
+  """A `federated_language.program.FederatedDataSourceIterator` backed by client ids.
 
-  A `tff.program.FederatedDataSourceIterator` backed by sequence of client ids,
+  A `federated_language.program.FederatedDataSourceIterator` backed by sequence
+  of
+  client ids,
   one client id per client. It selects client ids uniformly at random, with
   replacement over successive calls of `select()` but without replacement within
   a single call of `select()`.
@@ -45,15 +46,12 @@ class ClientIdDataSourceIterator(data_source.FederatedDataSourceIterator):
     Raises:
       ValueError: If `client_ids` is empty.
     """
-    py_typecheck.check_type(client_ids, Sequence)
-    for client_id in client_ids:
-      py_typecheck.check_type(client_id, str)
     if not client_ids:
       raise ValueError('Expected `client_ids` to not be empty.')
 
     self._client_ids = client_ids
-    self._federated_type = computation_types.FederatedType(
-        np.str_, placements.CLIENTS
+    self._federated_type = federated_language.FederatedType(
+        np.str_, federated_language.CLIENTS
     )
 
   @classmethod
@@ -72,7 +70,7 @@ class ClientIdDataSourceIterator(data_source.FederatedDataSourceIterator):
     return client_ids_bytes
 
   @property
-  def federated_type(self) -> computation_types.FederatedType:
+  def federated_type(self) -> federated_language.FederatedType:
     """The type of the data returned by calling `select`."""
     return self._federated_type
 
@@ -87,8 +85,6 @@ class ClientIdDataSourceIterator(data_source.FederatedDataSourceIterator):
       ValueError: If `k` is not a positive integer or if `k` is not less than
         the number of `client_ids`.
     """
-    if k is not None:
-      py_typecheck.check_type(k, int)
     if k is None or k < 0 or k > len(self._client_ids):
       raise ValueError(
           'Expected `k` to be a positive integer and less than the number of '
@@ -106,8 +102,8 @@ class ClientIdDataSourceIterator(data_source.FederatedDataSourceIterator):
     return self._client_ids == other._client_ids
 
 
-class ClientIdDataSource(data_source.FederatedDataSource):
-  """A `tff.program.FederatedDataSource` backed by client ids."""
+class ClientIdDataSource(federated_language.program.FederatedDataSource):
+  """A `federated_language.program.FederatedDataSource` backed by client ids."""
 
   def __init__(self, client_ids: Sequence[str]):
     """Returns an initialized `tff.program.ClientIdDataSource`.
@@ -119,22 +115,19 @@ class ClientIdDataSource(data_source.FederatedDataSource):
     Raises:
       ValueError: If `client_ids` is empty.
     """
-    py_typecheck.check_type(client_ids, Sequence)
-    for client_id in client_ids:
-      py_typecheck.check_type(client_id, str)
     if not client_ids:
       raise ValueError('Expected `client_ids` to not be empty.')
 
     self._client_ids = client_ids
-    self._federated_type = computation_types.FederatedType(
-        np.str_, placements.CLIENTS
+    self._federated_type = federated_language.FederatedType(
+        np.str_, federated_language.CLIENTS
     )
 
   @property
-  def federated_type(self) -> computation_types.FederatedType:
+  def federated_type(self) -> federated_language.FederatedType:
     """The type of the data returned by calling `select` on an iterator."""
     return self._federated_type
 
-  def iterator(self) -> data_source.FederatedDataSourceIterator:
+  def iterator(self) -> federated_language.program.FederatedDataSourceIterator:
     """Returns a new iterator for retrieving client ids from this data source."""
     return ClientIdDataSourceIterator(self._client_ids)

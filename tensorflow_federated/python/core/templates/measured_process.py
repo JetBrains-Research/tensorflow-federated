@@ -14,22 +14,16 @@
 """Define a template for a stateful process that produces metrics."""
 
 import collections
-from typing import Optional
+from typing import NamedTuple, Optional
 
-import attrs
+import federated_language
 import tree
 
-from tensorflow_federated.python.core.impl.computation import computation_base
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
 from tensorflow_federated.python.core.templates import errors
 from tensorflow_federated.python.core.templates import iterative_process
 
 
-@attrs.define(frozen=True, eq=False)
-class MeasuredProcessOutput:
+class MeasuredProcessOutput(NamedTuple):
   """A structure containing the output of a `MeasuredProcess.next` computation.
 
   Attributes:
@@ -67,21 +61,22 @@ class MeasuredProcess(iterative_process.IterativeProcess):
 
   def __init__(
       self,
-      initialize_fn: computation_base.Computation,
-      next_fn: computation_base.Computation,
+      initialize_fn: federated_language.framework.Computation,
+      next_fn: federated_language.framework.Computation,
       next_is_multi_arg: Optional[bool] = None,
   ):
     """Creates a `tff.templates.MeasuredProcess`.
 
     Args:
-      initialize_fn: A no-arg `tff.Computation` that returns the initial state
-        of the measured process. Let the type of this state be called `S`.
-      next_fn: A `tff.Computation` that represents the iterated function. The
-        first or only argument must be assignable from (
-        `tff.types.Type.is_assignable_from` must return `True`) the state type
-        `S`. The return value must be a `MeasuredProcessOutput` whose `state`
-        member is assignable to the first argument (same requirement as the `S`
-        type).
+      initialize_fn: A no-arg `federated_language.Computation` that returns the
+        initial state of the measured process. Let the type of this state be
+        called `S`.
+      next_fn: A `federated_language.Computation` that represents the iterated
+        function. The first or only argument must be assignable from (
+        `federated_language.Type.is_assignable_from` must return `True`) the
+        state type `S`. The return value must be a `MeasuredProcessOutput` whose
+        `state` member is assignable to the first argument (same requirement as
+        the `S` type).
       next_is_multi_arg: An optional boolean indicating that `next_fn` will
         receive more than just the state argument (if `True`) or only the state
         argument (if `False`). This parameter is primarily used to provide
@@ -89,7 +84,7 @@ class MeasuredProcess(iterative_process.IterativeProcess):
 
     Raises:
       TypeError: If `initialize_fn` and `next_fn` are not instances of
-        `tff.Computation`.
+        `federated_language.Computation`.
       TemplateInitFnParamNotEmptyError: If `initialize_fn` has any input
         arguments.
       TemplateStateNotAssignableError: If the `state` returned by either
@@ -101,7 +96,7 @@ class MeasuredProcess(iterative_process.IterativeProcess):
     super().__init__(initialize_fn, next_fn, next_is_multi_arg)
     next_result_type = next_fn.type_signature.result
     if not (
-        isinstance(next_result_type, computation_types.StructWithPythonType)
+        isinstance(next_result_type, federated_language.StructWithPythonType)
         and next_result_type.python_container is MeasuredProcessOutput
     ):
       raise errors.TemplateNotMeasuredProcessOutputError(
@@ -168,10 +163,10 @@ def chain_measured_processes(
   """
 
   # Concatenate all the initialization computations.
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def composition_initialize():
     try:
-      return intrinsics.federated_zip(
+      return federated_language.federated_zip(
           collections.OrderedDict(
               (name, process.initialize())
               for name, process in measured_processes.items()
@@ -189,15 +184,15 @@ def chain_measured_processes(
 
   first_process = next(iter(measured_processes.values()))
   first_process_value_type_spec = first_process.next.type_signature.parameter[1]  # pytype: disable=unsupported-operands
-  concatenated_state_type_spec = computation_types.FederatedType(
-      computation_types.StructType([
+  concatenated_state_type_spec = federated_language.FederatedType(
+      federated_language.StructType([
           (name, process.next.type_signature.parameter[0].member)  # pytype: disable=unsupported-operands
           for name, process in measured_processes.items()
       ]),
-      placements.SERVER,
+      federated_language.SERVER,
   )
 
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       concatenated_state_type_spec, first_process_value_type_spec
   )
   def composition_next(state, values):
@@ -219,9 +214,9 @@ def chain_measured_processes(
       measurements[name] = output.measurements
       values = output.result
     return MeasuredProcessOutput(
-        state=intrinsics.federated_zip(new_states),
+        state=federated_language.federated_zip(new_states),
         result=values,
-        measurements=intrinsics.federated_zip(measurements),
+        measurements=federated_language.federated_zip(measurements),
     )
 
   return MeasuredProcess(composition_initialize, composition_next)
@@ -267,10 +262,10 @@ def concatenate_measured_processes(
   """
 
   # Concatenate all the initialization computations.
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def concatenation_initialize():
     try:
-      return intrinsics.federated_zip(
+      return federated_language.federated_zip(
           collections.OrderedDict(
               (name, process.initialize())
               for name, process in measured_processes.items()
@@ -286,11 +281,11 @@ def concatenate_measured_processes(
           f'placement of the state: {state_type}.'
       ) from e
 
-  concatenated_state_type_spec = computation_types.FederatedType(
+  concatenated_state_type_spec = federated_language.FederatedType(
       tree.map_structure(
           lambda process: process.state_type.member, measured_processes
       ),
-      placements.SERVER,
+      federated_language.SERVER,
   )
   concatenated_values_type_spec = tree.map_structure(
       lambda process: process.next.type_signature.parameter[1],
@@ -298,7 +293,7 @@ def concatenate_measured_processes(
   )
 
   # Concatenate all the next computations.
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       concatenated_state_type_spec, concatenated_values_type_spec
   )
   def concatenation_next(state, values):
@@ -311,9 +306,9 @@ def concatenate_measured_processes(
       results[name] = output.result
       measurements[name] = output.measurements
     return MeasuredProcessOutput(
-        state=intrinsics.federated_zip(new_states),
+        state=federated_language.federated_zip(new_states),
         result=results,
-        measurements=intrinsics.federated_zip(measurements),
+        measurements=federated_language.federated_zip(measurements),
     )
 
   return MeasuredProcess(concatenation_initialize, concatenation_next)

@@ -16,12 +16,10 @@
 import collections
 from typing import Optional, Union
 
+import federated_language
+
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.computation import computation_base
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
 from tensorflow_federated.python.core.templates import iterative_process
 from tensorflow_federated.python.learning.metrics import aggregation_utils
 from tensorflow_federated.python.learning.metrics import sampling_aggregation_factory
@@ -39,9 +37,9 @@ def sum_then_finalize(
         types.FunctionalMetricFinalizersType,
     ],
     local_unfinalized_metrics_type: Optional[
-        computation_types.StructWithPythonType
+        federated_language.StructWithPythonType
     ] = None,
-) -> computation_base.Computation:
+) -> federated_language.framework.Computation:
   """Creates a TFF computation that aggregates metrics via `sum_then_finalize`.
 
   The returned federated TFF computation is a polymorphic computation that
@@ -52,8 +50,10 @@ def sum_then_finalize(
   the polymorphic method is invoked on.
 
   Note: invoking this computation outside of a federated context (a method
-  decorated with `tff.federated_computation`) will require first wrapping it in
-  a concrete, non-polymorphic `tff.Computation` with appropriate federated
+  decorated with `federated_language.federated_computation`) will require first
+  wrapping it in
+  a concrete, non-polymorphic `federated_language.Computation` with appropriate
+  federated
   types.
 
   Args:
@@ -79,7 +79,7 @@ def sum_then_finalize(
   del local_unfinalized_metrics_type  # Unused.
   aggregation_utils.check_metric_finalizers(metric_finalizers)
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def aggregator_computation(client_local_unfinalized_metrics):
     local_unfinalized_metrics_type = (
         client_local_unfinalized_metrics.type_signature.member
@@ -94,7 +94,7 @@ def sum_then_finalize(
       aggregation_utils.check_finalizers_matches_unfinalized_metrics(
           metric_finalizers, local_unfinalized_metrics_type
       )
-    unfinalized_metrics_sum = intrinsics.federated_sum(
+    unfinalized_metrics_sum = federated_language.federated_sum(
         client_local_unfinalized_metrics
     )
 
@@ -113,7 +113,7 @@ def sum_then_finalize(
           )
         return finalized_metrics
 
-    return intrinsics.federated_map(
+    return federated_language.federated_map(
         finalizer_computation, unfinalized_metrics_sum
     )
 
@@ -133,12 +133,12 @@ def secure_sum_then_finalize(
         types.FunctionalMetricFinalizersType,
     ],
     local_unfinalized_metrics_type: Optional[
-        computation_types.StructWithPythonType
+        federated_language.StructWithPythonType
     ] = None,
     metric_value_ranges: Optional[
         sum_aggregation_factory.UserMetricValueRangeDict
     ] = None,
-) -> computation_base.Computation:
+) -> federated_language.framework.Computation:
   """Creates a TFF computation that aggregates metrics using secure summation.
 
   The returned federated TFF computation is a polymorphic computation that
@@ -149,8 +149,10 @@ def secure_sum_then_finalize(
   the polymorphic method is invoked on.
 
   Note: invoking this computation outside of a federated context (a method
-  decorated with `tff.federated_computation`) will require first wrapping it in
-  a concrete, non-polymorphic `tff.Computation` with appropriate federated
+  decorated with `federated_language.federated_computation`) will require first
+  wrapping it in
+  a concrete, non-polymorphic `federated_language.Computation` with appropriate
+  federated
   types.
 
   The computation is intended to be invoked on the output of
@@ -261,7 +263,7 @@ def secure_sum_then_finalize(
     assert not iterative_process.is_stateful(secure_sum_process)
     return secure_sum_process
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def aggregator_computation(client_local_unfinalized_metrics):
     secure_sum_process = _create_secure_sum_process(
         client_local_unfinalized_metrics.type_signature.member
@@ -292,7 +294,7 @@ def secure_sum_then_finalize(
           )
       return finalized_metrics
 
-    return intrinsics.federated_map(
+    return federated_language.federated_map(
         finalizer_computation, (unfinalized_metrics, secure_sum_measurements)
     )
 
@@ -305,10 +307,10 @@ def finalize_then_sample(
         types.FunctionalMetricFinalizersType,
     ],
     local_unfinalized_metrics_type: Optional[
-        computation_types.StructWithPythonType
+        federated_language.StructWithPythonType
     ] = None,
     sample_size: int = 100,
-) -> computation_base.Computation:
+) -> federated_language.framework.Computation:
   """Creates a TFF computation to aggregate metrics via `finalize_then_sample`.
 
   The returned federated TFF computation is a polymorphic computation that
@@ -319,8 +321,10 @@ def finalize_then_sample(
   the polymorphic method is invoked on.
 
   Note: invoking this computation outside of a federated context (a method
-  decoratedc with `tff.federated_computation`) will require first wrapping it in
-  a concrete, non-polymorphic `tff.Computation` with appropriate federated
+  decoratedc with `federated_language.federated_computation`) will require first
+  wrapping it in
+  a concrete, non-polymorphic `federated_language.Computation` with appropriate
+  federated
   types.
 
   The returned computation is intended to be invoked on the output of
@@ -387,7 +391,7 @@ def finalize_then_sample(
   del local_unfinalized_metrics_type  # Unused.
   aggregation_utils.check_metric_finalizers(metric_finalizers)
 
-  @federated_computation.federated_computation
+  @federated_language.federated_computation
   def aggregator_computation(client_local_unfinalized_metrics):
     local_unfinalized_metrics_type = (
         client_local_unfinalized_metrics.type_signature.member

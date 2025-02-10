@@ -31,7 +31,6 @@ limitations under the License
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow_federated/cc/core/impl/executors/session_provider.h"
 #include "tensorflow_federated/cc/core/impl/executors/value_test_utils.h"
@@ -107,11 +106,8 @@ TEST(DatasetFromTensorStructuresTest, ReturnsDatasetWithElements) {
       ValueStructuresToTensorStructures(input_values);
   tf::Tensor serialized_dataset =
       TFF_ASSERT_OK(DatasetFromTensorStructures(input_tensors));
-  v0::Value::Sequence sequence;
-  *sequence.mutable_serialized_graph_def() =
-      serialized_dataset.scalar<tf::tstring>()();
   std::vector<std::vector<tf::Tensor>> output_tensors =
-      TFF_ASSERT_OK(SequenceValueToList(sequence));
+      TFF_ASSERT_OK(SequenceValueToList(serialized_dataset));
   ASSERT_EQ(input_tensors.size(), output_tensors.size());
   for (size_t i = 0; i < input_tensors.size(); i++) {
     EXPECT_THAT(output_tensors[i],
@@ -142,7 +138,7 @@ TEST(DatasetFromTensorStructuresTest, ReturnsReducibleDataset) {
       "output_tensor_1",
       "output_tensor_2",
   });
-  tf::Status status = session->Run(
+  absl::Status status = session->Run(
       {
           {reduce_dataset_input_name, serialized_dataset},
       },

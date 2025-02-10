@@ -18,17 +18,15 @@ from typing import Any
 from unittest import mock
 
 from absl.testing import absltest
+import federated_language
 import numpy as np
 import tensorflow as tf
 
 from tensorflow_federated.python.core.backends.native import execution_contexts
+from tensorflow_federated.python.core.environments.tensorflow_backend import tensorflow_test_utils
+from tensorflow_federated.python.core.environments.tensorflow_backend import type_conversions
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
-from tensorflow_federated.python.core.impl.types import type_conversions
-from tensorflow_federated.python.core.impl.types import type_test_utils
+from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_types
 from tensorflow_federated.python.core.templates import aggregation_process
 from tensorflow_federated.python.core.templates import measured_process
 from tensorflow_federated.python.learning.algorithms import fed_eval
@@ -43,15 +41,14 @@ from tensorflow_federated.python.learning.models import variable
 from tensorflow_federated.python.learning.templates import composers
 from tensorflow_federated.python.learning.templates import distributors
 from tensorflow_federated.python.learning.templates import learning_process
-from tensorflow_federated.python.tensorflow_libs import tensorflow_test_utils
 
 
 # Convenience aliases.
-FederatedType = computation_types.FederatedType
-FunctionType = computation_types.FunctionType
-SequenceType = computation_types.SequenceType
-StructType = computation_types.StructType
-TensorType = computation_types.TensorType
+FederatedType = federated_language.FederatedType
+FunctionType = federated_language.FunctionType
+SequenceType = federated_language.SequenceType
+StructType = federated_language.StructType
+TensorType = federated_language.TensorType
 
 
 class TestModel(variable.VariableModel):
@@ -120,12 +117,10 @@ class TestModel(variable.VariableModel):
 def _get_metrics_type(metrics: collections.OrderedDict[str, Any]):
   def _tensor_spec_from_tensor_like(x):
     x_as_tensor = tf.convert_to_tensor(x)
-    return computation_types.tensorflow_to_type(
-        (x_as_tensor.dtype, x_as_tensor.shape)
-    )
+    return tensorflow_types.to_type((x_as_tensor.dtype, x_as_tensor.shape))
 
   finalizer_spec = tf.nest.map_structure(_tensor_spec_from_tensor_like, metrics)
-  return computation_types.StructWithPythonType(
+  return federated_language.StructWithPythonType(
       finalizer_spec, collections.OrderedDict
   )
 
@@ -142,9 +137,11 @@ def _create_custom_metrics_aggregation_process(
         local_unfinalized_metrics_type,
     )
 
-  @federated_computation.federated_computation()
+  @federated_language.federated_computation()
   def init_fn():
-    return intrinsics.federated_eval(create_all_zero_state, placements.SERVER)
+    return federated_language.federated_eval(
+        create_all_zero_state, federated_language.SERVER
+    )
 
   @tensorflow_computation.tf_computation(
       local_unfinalized_metrics_type, local_unfinalized_metrics_type
@@ -156,16 +153,18 @@ def _create_custom_metrics_aggregation_process(
         tf.math.maximum, unfinalized_metrics, new_max_unfinalized_metrics
     )
 
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       init_fn.type_signature.result,
-      computation_types.FederatedType(
-          local_unfinalized_metrics_type, placements.CLIENTS
+      federated_language.FederatedType(
+          local_unfinalized_metrics_type, federated_language.CLIENTS
       ),
   )
   def next_fn(state, unfinalized_metrics):
-    max_unfinalized_metrics = intrinsics.federated_max(unfinalized_metrics)
+    max_unfinalized_metrics = federated_language.federated_max(
+        unfinalized_metrics
+    )
 
-    state = intrinsics.federated_map(
+    state = federated_language.federated_map(
         get_max_unfinalized_metrics, (state, max_unfinalized_metrics)
     )
 
@@ -178,19 +177,21 @@ def _create_custom_metrics_aggregation_process(
         )
       return finalized_metrics
 
-    current_round_metrics = intrinsics.federated_map(
+    current_round_metrics = federated_language.federated_map(
         finalizer_computation, max_unfinalized_metrics
     )
-    total_rounds_metrics = intrinsics.federated_map(
+    total_rounds_metrics = federated_language.federated_map(
         finalizer_computation, state
     )
 
     return measured_process.MeasuredProcessOutput(
         state=state,
-        result=intrinsics.federated_zip(
+        result=federated_language.federated_zip(
             (current_round_metrics, total_rounds_metrics)
         ),
-        measurements=intrinsics.federated_value((), placements.SERVER),
+        measurements=federated_language.federated_value(
+            (), federated_language.SERVER
+        ),
     )
 
   return aggregation_process.AggregationProcess(init_fn, next_fn)
@@ -222,7 +223,7 @@ class FedEvalProcessTest(tf.test.TestCase):
     eval_process = fed_eval.build_fed_eval(model_fn)
     self.assertIsInstance(eval_process, learning_process.LearningProcess)
 
-    expected_state_type = computation_types.FederatedType(
+    expected_state_type = federated_language.FederatedType(
         composers.LearningAlgorithmState(
             global_model_weights=model_weights_type,
             distributor=(),
@@ -232,9 +233,9 @@ class FedEvalProcessTest(tf.test.TestCase):
             ),
             finalizer=(),
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
-    expected_metrics_type = computation_types.FederatedType(
+    expected_metrics_type = federated_language.FederatedType(
         collections.OrderedDict(
             distributor=(),
             client_work=collections.OrderedDict(
@@ -246,50 +247,54 @@ class FedEvalProcessTest(tf.test.TestCase):
             aggregator=collections.OrderedDict(mean_value=(), mean_weight=()),
             finalizer=(),
         ),
-        placements.SERVER,
+        federated_language.SERVER,
     )
-    type_test_utils.assert_types_equivalent(
-        eval_process.initialize.type_signature,
-        FunctionType(parameter=None, result=expected_state_type),
+    self.assertTrue(
+        eval_process.initialize.type_signature.is_equivalent_to(
+            FunctionType(parameter=None, result=expected_state_type),
+        )
     )
-    type_test_utils.assert_types_equivalent(
-        eval_process.next.type_signature,
-        FunctionType(
-            parameter=StructType([
-                ('state', expected_state_type),
-                (
-                    'client_data',
-                    computation_types.FederatedType(
-                        SequenceType(
-                            StructType([(
-                                'temp',
-                                TensorType(dtype=np.float32, shape=[None]),
-                            )])
+    self.assertTrue(
+        eval_process.next.type_signature.is_equivalent_to(
+            FunctionType(
+                parameter=StructType([
+                    ('state', expected_state_type),
+                    (
+                        'client_data',
+                        federated_language.FederatedType(
+                            SequenceType(
+                                StructType([(
+                                    'temp',
+                                    TensorType(dtype=np.float32, shape=[None]),
+                                )])
+                            ),
+                            federated_language.CLIENTS,
                         ),
-                        placements.CLIENTS,
                     ),
+                ]),
+                result=learning_process.LearningProcessOutput(
+                    state=expected_state_type, metrics=expected_metrics_type
                 ),
-            ]),
-            result=learning_process.LearningProcessOutput(
-                state=expected_state_type, metrics=expected_metrics_type
-            ),
-        ),
+            )
+        )
     )
-    type_test_utils.assert_types_equivalent(
-        eval_process.get_model_weights.type_signature,
-        FunctionType(
-            parameter=expected_state_type.member, result=model_weights_type
-        ),
+    self.assertTrue(
+        eval_process.get_model_weights.type_signature.is_equivalent_to(
+            FunctionType(
+                parameter=expected_state_type.member, result=model_weights_type
+            )
+        )
     )
-    type_test_utils.assert_types_equivalent(
-        eval_process.set_model_weights.type_signature,
-        FunctionType(
-            parameter=StructType([
-                ('state', expected_state_type.member),
-                ('model_weights', model_weights_type),
-            ]),
-            result=expected_state_type.member,
-        ),
+    self.assertTrue(
+        eval_process.set_model_weights.type_signature.is_equivalent_to(
+            FunctionType(
+                parameter=StructType([
+                    ('state', expected_state_type.member),
+                    ('model_weights', model_weights_type),
+                ]),
+                result=expected_state_type.member,
+            )
+        )
     )
 
   @tensorflow_test_utils.skip_test_for_multi_gpu
@@ -315,9 +320,9 @@ class FedEvalProcessTest(tf.test.TestCase):
       return {'temp': np.array(temps, dtype=np.float32)}
 
     clients_data = [
-        [_temp_dict([1.0, 10.0, 2.0, 7.0]), _temp_dict([6.0, 11.0])],
-        [_temp_dict([9.0, 12.0, 13.0])],
-        [_temp_dict([1.0]), _temp_dict([22.0, 23.0])],
+        [_temp_dict([1.0, 10.0, 2.0, 7.0]), _temp_dict([6.0, 11.0, 0.0, 0.0])],
+        [_temp_dict([9.0, 12.0, 13.0, 0.0])],
+        [_temp_dict([1.0, 0.0, 0.0, 0.0]), _temp_dict([22.0, 23.0, 0.0, 0.0])],
     ]
 
     output = eval_process.next(new_state, clients_data)
@@ -345,37 +350,41 @@ class FedEvalProcessTest(tf.test.TestCase):
     model_weights_type = model_weights_lib.weights_type_from_model(TestModel)
 
     def test_distributor():
-      @federated_computation.federated_computation()
-      def init_fn():
-        return intrinsics.federated_value((), placements.SERVER)
 
-      @federated_computation.federated_computation(
+      @federated_language.federated_computation()
+      def init_fn():
+        return federated_language.federated_value((), federated_language.SERVER)
+
+      @federated_language.federated_computation(
           init_fn.type_signature.result,
-          computation_types.FederatedType(
-              model_weights_type, placements.SERVER
+          federated_language.FederatedType(
+              model_weights_type, federated_language.SERVER
           ),
       )
       def next_fn(state, value):
         return measured_process.MeasuredProcessOutput(
             state,
-            intrinsics.federated_broadcast(value),
-            intrinsics.federated_value((), placements.SERVER),
+            federated_language.federated_broadcast(value),
+            federated_language.federated_value((), federated_language.SERVER),
         )
 
       return distributors.DistributionProcess(init_fn, next_fn)
 
     eval_process = fed_eval.build_fed_eval(TestModel, test_distributor())
-    type_test_utils.assert_types_equivalent(
-        eval_process.initialize.type_signature.result.member.distributor,
-        test_distributor().initialize.type_signature.result.member,
+    self.assertTrue(
+        eval_process.initialize.type_signature.result.member.distributor.is_equivalent_to(
+            test_distributor().initialize.type_signature.result.member
+        )
     )
-    type_test_utils.assert_types_equivalent(
-        eval_process.next.type_signature.result.state.member.distributor,
-        test_distributor().next.type_signature.result.state.member,
+    self.assertTrue(
+        eval_process.next.type_signature.result.state.member.distributor.is_equivalent_to(
+            test_distributor().next.type_signature.result.state.member
+        )
     )
-    type_test_utils.assert_types_equivalent(
-        eval_process.next.type_signature.result.metrics.member.distributor,
-        test_distributor().next.type_signature.result.measurements.member,
+    self.assertTrue(
+        eval_process.next.type_signature.result.metrics.member.distributor.is_equivalent_to(
+            test_distributor().next.type_signature.result.measurements.member
+        )
     )
 
   @tensorflow_test_utils.skip_test_for_multi_gpu
@@ -401,9 +410,9 @@ class FedEvalProcessTest(tf.test.TestCase):
       return {'temp': np.array(temps, dtype=np.float32)}
 
     clients_data = [
-        [_temp_dict([1.0, 10.0, 2.0, 7.0]), _temp_dict([6.0, 11.0])],
-        [_temp_dict([9.0, 12.0, 13.0])],
-        [_temp_dict([1.0]), _temp_dict([22.0, 23.0])],
+        [_temp_dict([1.0, 10.0, 2.0, 7.0]), _temp_dict([6.0, 11.0, 0.0, 0.0])],
+        [_temp_dict([9.0, 12.0, 13.0, 0.0])],
+        [_temp_dict([1.0, 0.0, 0.0, 0.0]), _temp_dict([22.0, 23.0, 0.0, 0.0])],
     ]
 
     output = eval_process.next(state, clients_data)
@@ -459,7 +468,7 @@ class FunctionalFedEvalProcessTest(tf.test.TestCase):
             y=[[1.0], [2.0], [3.0], [4.0]],
         )
     )
-    return [dataset1.repeat(2).batch(3), dataset2.repeat(2).batch(3)]
+    return [dataset1.repeat(3).batch(3), dataset2.repeat(3).batch(3)]
 
   def test_raises_on_non_callable_or_functional_model(self):
     with self.assertRaisesRegex(TypeError, 'is not a callable'):
@@ -468,7 +477,7 @@ class FunctionalFedEvalProcessTest(tf.test.TestCase):
   @tensorflow_test_utils.skip_test_for_gpu
   def test_functional_evaluation_matches_non_functional(self):
     datasets = self.create_test_datasets()
-    batch_type = computation_types.tensorflow_to_type(datasets[0].element_spec)
+    batch_type = tensorflow_types.to_type(datasets[0].element_spec)
     loss_fn = tf.keras.losses.MeanSquaredError
     keras_model_fn = functools.partial(
         model_examples.build_linear_regression_keras_functional_model,

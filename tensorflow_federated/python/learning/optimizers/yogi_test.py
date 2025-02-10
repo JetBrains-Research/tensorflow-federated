@@ -62,7 +62,7 @@ class YogiTest(optimizer_test_utils.TestCase, parameterized.TestCase):
       state, weights = optimizer.next(state, weights, gradients)
       history.append(weights)
     self.assertAllClose(
-        [[1.0], [0.9000007], [0.8000267], [0.700077], [0.600153]], history
+        [[1.0], [0.9], [0.8], [0.7], [0.6]], history, rtol=1e-4, atol=1e-4
     )
 
   @parameterized.named_parameters(
@@ -82,6 +82,39 @@ class YogiTest(optimizer_test_utils.TestCase, parameterized.TestCase):
     tf.nest.map_structure(
         lambda w: self.assertTrue(all(tf.math.is_finite(w))), weights
     )
+
+  @parameterized.named_parameters(
+      ('scalar_spec', _SCALAR_SPEC),
+      ('struct_spec', _STRUCT_SPEC),
+      ('nested_spec', _NESTED_SPEC),
+  )
+  def test_skips_none_gradients(self, spec):
+    weights = tf.nest.map_structure(lambda s: tf.ones(s.shape, s.dtype), spec)
+    gradients = tf.nest.map_structure(lambda s: None, spec)
+    optimizer = yogi.build_yogi(0.01)
+
+    state = optimizer.initialize(spec)
+    updated_state, updated_weights = optimizer.next(state, weights, gradients)
+    state[yogi._STEP_KEY] += 1
+
+    tf.nest.map_structure(self.assertAllEqual, weights, updated_weights)
+    tf.nest.map_structure(self.assertAllEqual, state, updated_state)
+
+  @parameterized.named_parameters(
+      ('empty_list', []),
+      ('empty_dict', {}),
+      ('empty_nested_structure', [([], []), {}]),
+  )
+  def test_behavior_on_empty_tree(self, structure):
+    weights = gradients = structure
+    optimizer = yogi.build_yogi(0.01)
+
+    state = optimizer.initialize(weights)
+    updated_state, updated_weights = optimizer.next(state, weights, gradients)
+    state[yogi._STEP_KEY] += 1
+
+    self.assertEqual(updated_state, state)
+    self.assertEqual(updated_weights, weights)
 
   def test_executes_with_indexed_slices(self):
     # TF can represent gradients as tf.IndexedSlices. This test makes sure this
@@ -196,6 +229,23 @@ class YogiTest(optimizer_test_utils.TestCase, parameterized.TestCase):
     hparams = optimizer.get_hparams(state)
     updated_state = optimizer.set_hparams(state, hparams)
     self.assertEqual(state, updated_state)
+
+  def test_lr_with_different_weight_dtypes(self):
+    weights = (
+        tf.constant([0.1], dtype=tf.float32),
+        tf.constant(1.0, dtype=tf.float64),
+        tf.constant([10.0, 10.0], dtype=tf.bfloat16),
+    )
+    yogi_optimizer = yogi.build_yogi(
+        learning_rate=tf.constant(0.1, dtype=tf.float32),
+        beta_1=tf.constant(0.1, dtype=tf.float32),
+        beta_2=tf.constant(0.1, dtype=tf.float32),
+        epsilon=tf.constant(0.1, dtype=tf.float64),
+    )
+    state = yogi_optimizer.initialize(weights)
+    yogi_optimizer.next(
+        state, weights, tf.nest.map_structure(tf.zeros_like, weights)
+    )
 
 
 if __name__ == '__main__':

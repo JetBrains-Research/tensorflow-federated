@@ -22,21 +22,22 @@ duration of time based on the `evaluation_period` parameter.
 """
 
 import asyncio
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 import copy
 import datetime
-from typing import NamedTuple, Optional, Union
+from typing import Any, NamedTuple, Optional, Union
 
 from absl import logging
+import federated_language
 
 from tensorflow_federated.python.learning.programs import evaluation_program_logic
 from tensorflow_federated.python.learning.templates import composers
 from tensorflow_federated.python.learning.templates import learning_process
-from tensorflow_federated.python.program import data_source
-from tensorflow_federated.python.program import federated_context
-from tensorflow_federated.python.program import program_state_manager as program_state_manager_lib
-from tensorflow_federated.python.program import release_manager
-from tensorflow_federated.python.program import value_reference
+
+
+_PROGRAM_METRICS_KEY = 'program_metrics'
+_ROUND_END_TIMESTAMP_KEY = 'round_end_timestamp'
+_NUM_RETRIES_KEY = 'num_retries'
 
 
 class ProgramState(NamedTuple):
@@ -47,14 +48,16 @@ class ProgramState(NamedTuple):
     round_number: The current round number.
     next_evaluation_timestamp_seconds: The timestamp of the next evaluation in
       seconds.
-    data_iterator: The `tff.program.FederatedDataSourceIterator` used for
-      training.
+    data_iterator: The `federated_language.program.FederatedDataSourceIterator`
+      used for training.
   """
 
   state: composers.LearningAlgorithmState
   round_number: int
   next_evaluation_timestamp_seconds: Optional[int]
-  data_iterator: Optional[data_source.FederatedDataSourceIterator]
+  data_iterator: Optional[
+      federated_language.program.FederatedDataSourceIterator
+  ]
 
 
 class TaskManager:
@@ -89,24 +92,44 @@ class TaskManager:
     self._pending_tasks.add(new_task)
 
 
+def _add_program_metrics(
+    metrics: Mapping[str, Any],
+    round_end_time: datetime.datetime,
+    num_retries: int = 0,
+) -> federated_language.program.ReleasableStructure:
+  """Adds program performance metrics to the metrics."""
+  if _PROGRAM_METRICS_KEY in metrics:
+    raise ValueError(
+        f'The metrics already contain the key {_PROGRAM_METRICS_KEY}.'
+    )
+  metrics_with_program_metrics = dict(metrics)
+  metrics_with_program_metrics[_PROGRAM_METRICS_KEY] = {
+      _ROUND_END_TIMESTAMP_KEY: round_end_time.timestamp(),
+      _NUM_RETRIES_KEY: num_retries,
+  }
+  return metrics_with_program_metrics
+
+
 # TODO: b/284509457 - Revisit this API when `initialize` is changed to be a
-# value instead of `tff.Computation`.
+# value instead of `federated_language.Computation`.
 async def train_model(
     *,
     train_process: learning_process.LearningProcess,
     initial_train_state: Optional[composers.LearningAlgorithmState] = None,
-    train_data_source: data_source.FederatedDataSource,
+    train_data_source: federated_language.program.FederatedDataSource,
     train_per_round_clients: int,
     train_total_rounds: int,
-    should_discard_round: Optional[
+    should_retry_round: Optional[
         Callable[[learning_process.LearningProcessOutput], bool]
     ] = None,
-    program_state_manager: program_state_manager_lib.ProgramStateManager,
-    model_output_manager: release_manager.ReleaseManager[
-        release_manager.ReleasableStructure, str
+    program_state_manager: federated_language.program.ProgramStateManager,
+    model_output_manager: federated_language.program.ReleaseManager[
+        federated_language.program.ReleasableStructure, str
     ],
     train_metrics_manager: Optional[
-        release_manager.ReleaseManager[release_manager.ReleasableStructure, int]
+        federated_language.program.ReleaseManager[
+            federated_language.program.ReleasableStructure, int
+        ]
     ] = None,
     evaluation_manager: Optional[evaluation_program_logic.EvaluationManager],
     evaluation_periodicity: Union[int, datetime.timedelta],
@@ -141,22 +164,23 @@ async def train_model(
       the train process. Its type signature should match the `type_signature` of
       the result of `train_process.initialize`. If not specified, use the
       retsult of `train_process.initialize`.
-    train_data_source: A `tff.program.FederatedDataSource` which returns client
-      data used during training.
+    train_data_source: A `federated_language.program.FederatedDataSource` which
+      returns client data used during training.
     train_per_round_clients: The number of clients per round of training.
     train_total_rounds: Total number of rounds of training.
-    should_discard_round: A Callable that takes the
+    should_retry_round: A Callable that takes the
       `tff.learning.templates.LearningProcessOutput` returned by
-      `training_process.next` and returns whether the round should be discarded.
-      If a round should be discarded, the program will roll back to the state of
+      `training_process.next` and returns whether the round should be retried.
+      If a round should be retried, the program will roll back to the state of
       the previous round and retry this round.
-    program_state_manager: A `tff.program.ProgramStateManager` used to save
-      program state for fault tolerance.
-    model_output_manager: A `tff.program.ReleaseManager` to release the model,
-      the results can be used for building inference models after training, or
-      warm-starting future training loops.
-    train_metrics_manager: A `tff.program.ReleaseManager` to release metrics of
-      training. Use `tff.program.GroupingReleaseManager` to supply multiple
+    program_state_manager: A `federated_language.program.ProgramStateManager`
+      used to save program state for fault tolerance.
+    model_output_manager: A `federated_language.program.ReleaseManager` to
+      release the model, the results can be used for building inference models
+      after training, or warm-starting future training loops.
+    train_metrics_manager: A `federated_language.program.ReleaseManager` to
+      release metrics of training. Use
+      `federated_language.program.GroupingReleaseManager` to supply multiple
       release managers.
     evaluation_manager: An `EvaluationManager` used to create a state manager
       for each evaluation loop that is forked off from the training loop.
@@ -168,7 +192,7 @@ async def train_model(
   Raises:
     ValueError: If the train state is None.
   """
-  federated_context.check_in_federated_context()
+  federated_language.program.check_in_federated_context()
 
   # A list of pending tasks (evaluation, value releases, etc) that we must await
   # before shutting down the program.
@@ -185,7 +209,7 @@ async def train_model(
   # previous run, this program state can be used to restore the execution of
   # this program logic and skip unnecessary steps.
   if initial_train_state is None:
-    initial_train_state = await value_reference.materialize_value(
+    initial_train_state = await federated_language.program.materialize_value(
         train_process.initialize()
     )
   train_state = initial_train_state
@@ -279,9 +303,9 @@ async def train_model(
   # for evaluation is created for a giving training checkpoint, that will run
   # evaluation computations in parallel.
   round_num = start_round + 1
-  # Upon program restart, `num_discarded_rounds` will be reset, resulting in the
-  # loss of information regarding discarded rounds within the current round.
-  num_discarded_rounds = 0
+  # Upon program restart, `num_retries` will be reset, resulting in the loss of
+  # information regarding number of retries within the current round.
+  num_retries = 0
   while round_num <= train_total_rounds:
     logging.info('Running train round %d', round_num)
     # Keep a copy of the previous iterator to ensure each retry starts from the
@@ -291,22 +315,21 @@ async def train_model(
     round_participants_data = train_data_iterator.select(
         train_per_round_clients
     )
-    train_result = await value_reference.materialize_value(
+    train_result = await federated_language.program.materialize_value(
         train_process.next(train_state, round_participants_data)
     )
-    if should_discard_round is not None and should_discard_round(train_result):
-      num_discarded_rounds += 1
+    if should_retry_round is not None and should_retry_round(train_result):
+      num_retries += 1
       logging.info(
-          'The training round %d should be discarded. The program will retry '
-          'this round.',
+          'The training round %d should be retried.',
           round_num,
       )
       train_data_iterator = copy.deepcopy(previous_train_data_iterator)
       continue
     logging.info(
-        'Finished train round %d with %d discarded rounds',
+        'Finished train round %d with %d retries.',
         round_num,
-        num_discarded_rounds,
+        num_retries,
     )
     if not isinstance(train_result, learning_process.LearningProcessOutput):
       raise TypeError(
@@ -354,9 +377,16 @@ async def train_model(
             '`train_model` requires the `train_process` argument to be a '
             '`tff.learning.templates.LearningProcess` whose `next` computation '
             'metrics result has a `train` field. Instead got a '
-            '`tff.Computation` whose result signature was: '
+            '`federated_language.Computation` whose result signature was: '
             f'{train_process.next.type_signature.result}'
         ) from e
+      # TODO: b/371431768 - Clean up the timestamps in the metrics once min sep
+      # policy is fixed.
+      released_train_metrics = _add_program_metrics(
+          released_train_metrics,
+          train_round_finished_time,
+          num_retries,
+      )
       task_manager.add_task(
           train_metrics_manager.release(
               released_train_metrics,
@@ -378,7 +408,7 @@ async def train_model(
           )
       )
     round_num += 1
-    num_discarded_rounds = 0
+    num_retries = 0
 
   # Wait for all pending tasks to complete before exiting the program.
   await task_manager.wait_for_all_tasks()

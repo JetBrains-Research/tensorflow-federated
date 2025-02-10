@@ -19,15 +19,16 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/fixed_array.h"
-#include "absl/container/node_hash_map.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_set.h"
 #include "absl/random/random.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/base/monitoring.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/core/composite_key_combiner.h"
@@ -41,40 +42,50 @@
 namespace tensorflow_federated {
 namespace aggregation {
 namespace {
+// Advances the pointer by T bytes.
+template <typename T>
+void AdvancePtr(void*& ptr) {
+  ptr = static_cast<void*>(static_cast<uint8_t*>(ptr) + sizeof(T));
+}
+
 // In order to MakeCompositeKeyFromDomainTensors, we need a variant of
 // CopyToDest that takes an index. That is, we need to be able to retrieve the
 // datum at a given index of the array that a source_ptr points to, then copy it
 // to a dest_ptr. We do not advance source_ptr because we have indexing.
 template <typename T>
-void IndexedCopyToDest(const void* source_ptr, size_t index, uint64_t* dest_ptr,
-                       std::unordered_set<std::string>& intern_pool) {
+void IndexedCopyToDest(const void* source_ptr, size_t index, void*& dest_ptr,
+                       absl::node_hash_set<std::string>& intern_pool) {
   const T& source_data = static_cast<const T*>(source_ptr)[index];
-  // Copy the 64-bit representation of the element into the position in the
-  // composite key data corresponding to this tensor.
-  T* typed_dest_ptr = reinterpret_cast<T*>(dest_ptr);
-  *typed_dest_ptr = source_data;
+  // Copy the bytes pointed to by source_ptr to the destination pointed to by
+  // dest_ptr.
+  std::memcpy(dest_ptr, &source_data, sizeof(T));
+  // Advance dest_ptr to the next T.
+  AdvancePtr<T>(dest_ptr);
 }
+
 // Specialization of IndexedCopyToDest for DT_STRING data type that interns the
 // string_view.
 template <>
 void IndexedCopyToDest<string_view>(
-    const void* source_ptr, size_t index, uint64_t* dest_ptr,
-    std::unordered_set<std::string>& intern_pool) {
+    const void* source_ptr, size_t index, void*& dest_ptr,
+    absl::node_hash_set<std::string>& intern_pool) {
   const string_view& source_data =
       static_cast<const string_view*>(source_ptr)[index];
   // Insert the string into the intern pool if it does not already exist. This
   // makes a copy of the string so that the intern pool owns the storage.
   auto it = intern_pool.emplace(source_data).first;
-  // The iterator of an unordered set may be invalidated by inserting more
+  // The iterator of a node_hash_set set may be invalidated by inserting more
   // elements, but the pointer to the underlying element is guaranteed to be
-  // stable. https://en.cppreference.com/w/cpp/container/unordered_set
+  // stable.
   // Thus, get the address of the string after dereferencing the iterator.
   const std::string* interned_string_ptr = &*it;
   // The stable address of the string can be interpreted as a 64-bit integer.
   intptr_t ptr_int = reinterpret_cast<intptr_t>(interned_string_ptr);
   // Set the destination storage to the integer representation of the string
   // address.
-  *dest_ptr = static_cast<uint64_t>(ptr_int);
+  std::memcpy(dest_ptr, &ptr_int, sizeof(intptr_t));
+  // Advance the dest_ptr.
+  AdvancePtr<intptr_t>(dest_ptr);
 }
 }  // namespace
 
@@ -114,7 +125,7 @@ class LocalToGlobalInserter
     // that have not yet been assigned.
     (*(this->container))[p.second] = SaveCompositeKeyAndGetOrdinal(
         std::move(p.first), key_combiner_->GetCompositeKeys(),
-        key_combiner_->GetCompositeKeyNext(), key_combiner_->GetKeyVec());
+        key_combiner_->GetCompositeKeyNext());
     return *this;
   }
 
@@ -143,14 +154,8 @@ StatusOr<Tensor> DPCompositeKeyCombiner::Accumulate(
 
 StatusOr<Tensor> DPCompositeKeyCombiner::AccumulateWithBound(
     const InputTensorList& tensors, TensorShape& shape, size_t num_elements) {
-  // The following contains unique composite keys in the order they were first
-  // created. We call the index of a composite key in this vector its "local
-  // ordinal," as it is only meaningful within one Accumulate call.
-  std::vector<const uint64_t*> local_key_vec;
-  local_key_vec.reserve(num_elements);
-
   // The following maps a view of a composite key to its local ordinal.
-  absl::node_hash_map<CompositeKey, int64_t> composite_keys_to_local_ordinal;
+  absl::flat_hash_map<CompositeKey, int64_t> composite_keys_to_local_ordinal;
   composite_keys_to_local_ordinal.reserve(num_elements);
 
   int64_t local_ordinal = 0;
@@ -159,9 +164,8 @@ StatusOr<Tensor> DPCompositeKeyCombiner::AccumulateWithBound(
   // i-th composite key. Created the same way CompositeKeyCombiner::Accumulate
   // creates ordinals but datastructures for lookup & storage are local to this
   // function call, instead of being class members.
-  std::unique_ptr<MutableVectorData<int64_t>> local_ordinals =
-      CreateOrdinals(tensors, num_elements, composite_keys_to_local_ordinal,
-                     local_ordinal, local_key_vec);
+  std::unique_ptr<MutableVectorData<int64_t>> local_ordinals = CreateOrdinals(
+      tensors, num_elements, composite_keys_to_local_ordinal, local_ordinal);
 
   // Create a mapping from local ordinals to global ordinals.
   // Default to kNoOrdinal.
@@ -226,13 +230,13 @@ CompositeKey DPCompositeKeyCombiner::MakeCompositeKeyFromDomainTensors(
 
   auto index_iter = indices.begin();
   data_type_iter = dtypes().begin();
-  CompositeKey composite_key(dtypes().size(), 0);
-  uint64_t* dest_ptr = composite_key.data();
+  CompositeKey composite_key = NewCompositeKey();
+  void* dest_ptr = composite_key.data();
   for (auto& domain_tensor : domain_tensors) {
     // Copy over data from the current tensor at the given index.
     const void* source_ptr = domain_tensor.data().data();
     DTYPE_CASES(*data_type_iter, T,
-                IndexedCopyToDest<T>(source_ptr, *index_iter, dest_ptr++,
+                IndexedCopyToDest<T>(source_ptr, *index_iter, dest_ptr,
                                      GetInternPool()));
 
     // Advance the data-type and tensor iterators.

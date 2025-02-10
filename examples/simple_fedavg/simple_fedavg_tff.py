@@ -26,6 +26,7 @@ Communication-Efficient Learning of Deep Networks from Decentralized Data
     https://arxiv.org/abs/1602.05629
 """
 
+import federated_language
 import tensorflow as tf
 import tensorflow_federated as tff
 
@@ -76,7 +77,7 @@ def _build_client_update_fn(
     # function, using tff.sequenece_reduce.
 
     client_update_type_spec = client_update_fn.type_signature.result
-    batch_type = tff.types.tensorflow_to_type(model_fn().input_spec)
+    batch_type = tff.tensorflow.to_type(model_fn().input_spec)
 
     @tff.tensorflow.computation(client_update_type_spec, batch_type)
     def client_update_batch_fn(client_data, batch):
@@ -95,12 +96,14 @@ def _build_client_update_fn(
       model = model_fn()
       return init_client_ouput(model, server_message)
 
-    @tff.federated_computation(
-        server_message_type, tff.SequenceType(batch_type)
+    @federated_language.federated_computation(
+        server_message_type, federated_language.SequenceType(batch_type)
     )
     def client_update_weights_fn(server_message, batches):
       client_data = initialize_client_data(server_message)
-      return tff.sequence_reduce(batches, client_data, client_update_batch_fn)
+      return federated_language.sequence_reduce(
+          batches, client_data, client_update_batch_fn
+      )
 
     return client_update_weights_fn
 
@@ -120,9 +123,9 @@ def build_federated_averaging_process(
       `tf.keras.optimizers.Optimizer` for server update.
     client_optimizer_fn: A no-arg function that returns a
       `tf.keras.optimizers.Optimizer` for client update.
-    use_sequence_reduce: If true, uses tff.sequence_reduce to perform reduction
-      across batches of dataset, instead of a for-loop inside client update
-      method.
+    use_sequence_reduce: If true, uses federated_language.sequence_reduce to
+      perform reduction across batches of dataset, instead of a for-loop inside
+      client update method.
 
   Returns:
     A `tff.templates.IterativeProcess`.
@@ -163,13 +166,17 @@ def build_federated_averaging_process(
     return build_server_broadcast_message(server_state)
 
   server_message_type = server_message_fn.type_signature.result
-  element_type = tff.types.tensorflow_to_type(whimsy_model.input_spec)
-  tf_dataset_type = tff.SequenceType(element_type)
+  element_type = tff.tensorflow.to_type(whimsy_model.input_spec)
+  tf_dataset_type = federated_language.SequenceType(element_type)
 
-  federated_server_state_type = tff.FederatedType(server_state_type, tff.SERVER)
-  federated_dataset_type = tff.FederatedType(tf_dataset_type, tff.CLIENTS)
+  federated_server_state_type = federated_language.FederatedType(
+      server_state_type, federated_language.SERVER
+  )
+  federated_dataset_type = federated_language.FederatedType(
+      tf_dataset_type, federated_language.CLIENTS
+  )
 
-  @tff.federated_computation(
+  @federated_language.federated_computation(
       federated_server_state_type, federated_dataset_type
   )
   def run_one_round(server_state, federated_dataset):
@@ -179,12 +186,15 @@ def build_federated_averaging_process(
       server_state: A `ServerState` containing the state of the training process
         up to the current round.
       federated_dataset: A federated `tf.data.Dataset` with placement
-        `tff.CLIENTS` containing data to train the current round on.
+        `federated_language.CLIENTS` containing data to train the current round
+        on.
 
     Returns:
       A tuple of updated `ServerState` and `tf.Tensor` of average loss.
     """
-    server_message = tff.federated_map(server_message_fn, server_state)
+    server_message = federated_language.federated_map(
+        server_message_fn, server_state
+    )
     client_update_fn = _build_client_update_fn(
         tf_dataset_type,
         server_message_type,
@@ -192,9 +202,11 @@ def build_federated_averaging_process(
         client_optimizer_fn,
         use_sequence_reduce,
     )
-    server_message_at_client = tff.federated_broadcast(server_message)
+    server_message_at_client = federated_language.federated_broadcast(
+        server_message
+    )
 
-    client_outputs = tff.federated_map(
+    client_outputs = federated_language.federated_map(
         client_update_fn,
         (
             server_message_at_client,
@@ -203,11 +215,11 @@ def build_federated_averaging_process(
     )
 
     weight_denom = client_outputs.client_weight
-    round_model_delta = tff.federated_mean(
+    round_model_delta = federated_language.federated_mean(
         client_outputs.weights_delta, weight=weight_denom
     )
 
-    server_state = tff.federated_map(
+    server_state = federated_language.federated_map(
         server_update_fn, (server_state, round_model_delta)
     )
     aggregated_outputs = metrics_aggregation_computation(
@@ -215,10 +227,12 @@ def build_federated_averaging_process(
     )
     return server_state, aggregated_outputs
 
-  @tff.federated_computation
+  @federated_language.federated_computation
   def server_init_tff():
     """Orchestration logic for server model initialization."""
-    return tff.federated_eval(server_init_tf, tff.SERVER)
+    return federated_language.federated_eval(
+        server_init_tf, federated_language.SERVER
+    )
 
   return tff.templates.IterativeProcess(
       initialize_fn=server_init_tff, next_fn=run_one_round

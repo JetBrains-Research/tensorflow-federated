@@ -19,6 +19,7 @@ import functools
 
 from absl.testing import parameterized
 import attrs
+import federated_language
 import numpy as np
 import tensorflow as tf
 import tensorflow_federated as tff
@@ -243,16 +244,18 @@ class SimpleFedAvgTest(tf.test.TestCase, parameterized.TestCase):
     )
     self.assertIsInstance(it_process, tff.templates.IterativeProcess)
     federated_data_type = it_process.next.type_signature.parameter[1]
-    tff.test.assert_types_identical(
+    self.assertEqual(
         federated_data_type,
-        tff.FederatedType(
-            tff.types.SequenceType(
+        federated_language.FederatedType(
+            federated_language.SequenceType(
                 collections.OrderedDict(
-                    x=tff.types.TensorType(np.float32, [None, 28, 28, 1]),
-                    y=tff.types.TensorType(np.int32, [None]),
+                    x=federated_language.TensorType(
+                        np.float32, [None, 28, 28, 1]
+                    ),
+                    y=federated_language.TensorType(np.int32, [None]),
                 )
             ),
-            tff.CLIENTS,
+            federated_language.CLIENTS,
         ),
     )
 
@@ -434,27 +437,27 @@ class RNNTest(tf.test.TestCase):
         it_process.next.type_signature.parameter
     )
     model_type = tff.learning.models.weights_type_from_model(_rnn_model_fn)
-    tff.test.assert_types_identical(
+    self.assertEqual(
         global_model_type,
-        tff.FederatedType(
+        federated_language.FederatedType(
             simple_fedavg_tf.ServerState(
                 model=model_type,
                 optimizer_state=[np.int64],
                 round_num=np.int32,
             ),
-            tff.SERVER,
+            federated_language.SERVER,
         ),
     )
-    tff.test.assert_types_identical(
+    self.assertEqual(
         client_datasets_type,
-        tff.FederatedType(
-            tff.types.SequenceType(
+        federated_language.FederatedType(
+            federated_language.SequenceType(
                 collections.OrderedDict(
-                    x=tff.types.TensorType(np.int32, [None, 5]),
-                    y=tff.types.TensorType(np.int32, [None, 5]),
+                    x=federated_language.TensorType(np.int32, [None, 5]),
+                    y=federated_language.TensorType(np.int32, [None, 5]),
                 )
             ),
-            tff.CLIENTS,
+            federated_language.CLIENTS,
         ),
     )
 

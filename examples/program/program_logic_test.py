@@ -20,6 +20,7 @@ from unittest import mock
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import federated_language
 import numpy as np
 import tensorflow as tf
 import tensorflow_federated as tff
@@ -41,14 +42,18 @@ def _create_mock_context() -> mock.Mock:
 
 def _create_mock_data_source_iterator(
     *,
-    federated_type: tff.FederatedType,
+    federated_type: federated_language.FederatedType,
     data: Optional[object] = None,
 ) -> mock.Mock:
   mock_data_source_iterator = mock.create_autospec(
-      tff.program.FederatedDataSourceIterator, spec_set=True, instance=True
+      federated_language.program.FederatedDataSourceIterator,
+      spec_set=True,
+      instance=True,
   )
   type(mock_data_source_iterator).federated_type = mock.PropertyMock(
-      spec=tff.FederatedType, return_value=federated_type, spec_set=True
+      spec=federated_language.FederatedType,
+      return_value=federated_type,
+      spec_set=True,
   )
   mock_data_source_iterator.select.side_effect = data
   return mock_data_source_iterator
@@ -56,17 +61,21 @@ def _create_mock_data_source_iterator(
 
 def _create_mock_data_source(
     *,
-    federated_type: tff.FederatedType,
-    iterator: Optional[tff.program.FederatedDataSourceIterator] = None,
+    federated_type: federated_language.FederatedType,
+    iterator: Optional[
+        federated_language.program.FederatedDataSourceIterator
+    ] = None,
 ) -> mock.Mock:
   if iterator is None:
     iterator = _create_mock_data_source_iterator(federated_type=federated_type)
 
   mock_data_source = mock.create_autospec(
-      tff.program.FederatedDataSource, spec_set=True, instance=True
+      federated_language.program.FederatedDataSource,
+      spec_set=True,
+      instance=True,
   )
   type(mock_data_source).federated_type = mock.PropertyMock(
-      spec=tff.Type, return_value=federated_type, spec_set=True
+      spec=federated_language.Type, return_value=federated_type, spec_set=True
   )
   mock_data_source.iterator.return_value = iterator
   return mock_data_source
@@ -74,54 +83,54 @@ def _create_mock_data_source(
 
 def _create_mock_initialize(
     *,
-    state_type: tff.FederatedType,
+    state_type: federated_language.FederatedType,
     side_effect: Optional[object] = None,
 ) -> mock.Mock:
   mock_initialize = mock.create_autospec(
-      tff.Computation, spec_set=True, side_effect=side_effect
+      federated_language.Computation, spec_set=True, side_effect=side_effect
   )
-  type_signature = tff.FunctionType(None, state_type)
+  type_signature = federated_language.FunctionType(None, state_type)
   type(mock_initialize).type_signature = mock.PropertyMock(
-      spec=tff.Type, return_value=type_signature, spec_set=True
+      spec=federated_language.Type, return_value=type_signature, spec_set=True
   )
   return mock_initialize
 
 
 def _create_mock_train(
     *,
-    state_type: tff.FederatedType,
-    train_data_type: tff.FederatedType,
-    train_metrics_type: tff.FederatedType,
+    state_type: federated_language.FederatedType,
+    train_data_type: federated_language.FederatedType,
+    train_metrics_type: federated_language.FederatedType,
     side_effect: Optional[object] = None,
 ) -> mock.Mock:
   mock_train = mock.create_autospec(
-      tff.Computation, spec_set=True, side_effect=side_effect
+      federated_language.Computation, spec_set=True, side_effect=side_effect
   )
-  type_signature = tff.FunctionType(
+  type_signature = federated_language.FunctionType(
       [state_type, train_data_type],
       [state_type, train_metrics_type],
   )
   type(mock_train).type_signature = mock.PropertyMock(
-      spec=tff.Type, return_value=type_signature, spec_set=True
+      spec=federated_language.Type, return_value=type_signature, spec_set=True
   )
   return mock_train
 
 
 def _create_mock_evaluation(
     *,
-    state_type: tff.FederatedType,
-    evaluation_data_type: tff.FederatedType,
-    evaluation_metrics_type: tff.FederatedType,
+    state_type: federated_language.FederatedType,
+    evaluation_data_type: federated_language.FederatedType,
+    evaluation_metrics_type: federated_language.FederatedType,
     side_effect: Optional[object] = None,
 ) -> mock.Mock:
   mock_evaluation = mock.create_autospec(
-      tff.Computation, spec_set=True, side_effect=side_effect
+      federated_language.Computation, spec_set=True, side_effect=side_effect
   )
-  type_signature = tff.FunctionType(
+  type_signature = federated_language.FunctionType(
       [state_type, evaluation_data_type], evaluation_metrics_type
   )
   type(mock_evaluation).type_signature = mock.PropertyMock(
-      spec=tff.Type, return_value=type_signature, spec_set=True
+      spec=federated_language.Type, return_value=type_signature, spec_set=True
   )
   return mock_evaluation
 
@@ -131,7 +140,9 @@ def _create_mock_program_state_manager(
     version: int = 0,
 ) -> mock.Mock:
   mock_program_state_manager = mock.create_autospec(
-      tff.program.ProgramStateManager, spec_set=True, instance=True
+      federated_language.program.ProgramStateManager,
+      spec_set=True,
+      instance=True,
   )
   mock_program_state_manager.load_latest.return_value = (program_state, version)
   return mock_program_state_manager
@@ -140,13 +151,21 @@ def _create_mock_program_state_manager(
 class CheckExpectedTypeSignaturesTest(parameterized.TestCase):
 
   def test_does_not_raise_unexpected_type_singature_error(self):
-    state_type = tff.FederatedType(np.str_, tff.SERVER)
-    train_data_type = tff.FederatedType(tff.SequenceType(np.str_), tff.CLIENTS)
-    train_metrics_type = tff.FederatedType(np.str_, tff.SERVER)
-    evaluation_data_type = tff.FederatedType(
-        tff.SequenceType(np.int32), tff.CLIENTS
+    state_type = federated_language.FederatedType(
+        np.str_, federated_language.SERVER
     )
-    evaluation_metrics_type = tff.FederatedType(np.str_, tff.SERVER)
+    train_data_type = federated_language.FederatedType(
+        federated_language.SequenceType(np.str_), federated_language.CLIENTS
+    )
+    train_metrics_type = federated_language.FederatedType(
+        np.str_, federated_language.SERVER
+    )
+    evaluation_data_type = federated_language.FederatedType(
+        federated_language.SequenceType(np.int32), federated_language.CLIENTS
+    )
+    evaluation_metrics_type = federated_language.FederatedType(
+        np.str_, federated_language.SERVER
+    )
 
     mock_initialize = _create_mock_initialize(state_type=state_type)
     mock_train = _create_mock_train(
@@ -180,26 +199,32 @@ class CheckExpectedTypeSignaturesTest(parameterized.TestCase):
   @parameterized.named_parameters(
       (
           'mismatch_initialize_train_state_type',
-          tff.FederatedType(np.int32, tff.SERVER),
-          tff.FederatedType(np.str_, tff.SERVER),
-          tff.FederatedType(np.str_, tff.SERVER),
+          federated_language.FederatedType(np.int32, federated_language.SERVER),
+          federated_language.FederatedType(np.str_, federated_language.SERVER),
+          federated_language.FederatedType(np.str_, federated_language.SERVER),
       ),
       (
           'mismatch_train_evaluation_type_signatures',
-          tff.FederatedType(np.str_, tff.SERVER),
-          tff.FederatedType(np.str_, tff.SERVER),
-          tff.FederatedType(np.int32, tff.SERVER),
+          federated_language.FederatedType(np.str_, federated_language.SERVER),
+          federated_language.FederatedType(np.str_, federated_language.SERVER),
+          federated_language.FederatedType(np.int32, federated_language.SERVER),
       ),
   )
   def test_raise_unexpected_type_singature_error(
       self, initialize_state_type, train_state_type, evaluation_state_type
   ):
-    train_data_type = tff.FederatedType(tff.SequenceType(np.str_), tff.CLIENTS)
-    train_metrics_type = tff.FederatedType(np.str_, tff.SERVER)
-    evaluation_data_type = tff.FederatedType(
-        tff.SequenceType(np.int32), tff.CLIENTS
+    train_data_type = federated_language.FederatedType(
+        federated_language.SequenceType(np.str_), federated_language.CLIENTS
     )
-    evaluation_metrics_type = tff.FederatedType(np.str_, tff.SERVER)
+    train_metrics_type = federated_language.FederatedType(
+        np.str_, federated_language.SERVER
+    )
+    evaluation_data_type = federated_language.FederatedType(
+        federated_language.SequenceType(np.int32), federated_language.CLIENTS
+    )
+    evaluation_metrics_type = federated_language.FederatedType(
+        np.str_, federated_language.SERVER
+    )
 
     mock_initialize = _create_mock_initialize(state_type=initialize_state_type)
     mock_train = _create_mock_train(
@@ -241,7 +266,7 @@ class TrainFederatedModelTest(
       ('equal_to_total_rounds', 10, _create_mock_program_state_manager),
       ('greater_than_total_rounds', 100, _create_mock_program_state_manager),
   )
-  @tff.test.with_context(_create_mock_context)
+  @federated_language.framework.with_context(_create_mock_context)
   async def test_calls_program_components(
       self, round_num, mock_program_state_manager_factory
   ):
@@ -259,21 +284,29 @@ class TrainFederatedModelTest(
     rounds = range(start_round, total_rounds + 1)
 
     states = [f'state_{x}' for x in rounds]
-    state_type = tff.FederatedType(np.str_, tff.SERVER)
+    state_type = federated_language.FederatedType(
+        np.str_, federated_language.SERVER
+    )
 
     train_data = [f'train_data_{x}' for x in rounds]
-    train_data_type = tff.FederatedType(tff.SequenceType(np.str_), tff.CLIENTS)
+    train_data_type = federated_language.FederatedType(
+        federated_language.SequenceType(np.str_), federated_language.CLIENTS
+    )
 
     train_metrics = [f'train_metrics_{x}' for x in rounds]
-    train_metrics_type = tff.FederatedType(np.str_, tff.SERVER)
+    train_metrics_type = federated_language.FederatedType(
+        np.str_, federated_language.SERVER
+    )
 
     evaluation_data = 'evaluation_data_1'
-    evaluation_data_type = tff.FederatedType(
-        tff.SequenceType(np.int32), tff.CLIENTS
+    evaluation_data_type = federated_language.FederatedType(
+        federated_language.SequenceType(np.int32), federated_language.CLIENTS
     )
 
     evaluation_metrics = 'evaluation_metrics_1'
-    evaluation_metrics_type = tff.FederatedType(np.str_, tff.SERVER)
+    evaluation_metrics_type = federated_language.FederatedType(
+        np.str_, federated_language.SERVER
+    )
 
     mock_initialize = _create_mock_initialize(
         state_type=state_type, side_effect=[initial_state]
@@ -309,13 +342,13 @@ class TrainFederatedModelTest(
         iterator=mock_evaluation_data_source_iterator,
     )
     mock_train_metrics_manager = mock.create_autospec(
-        tff.program.ReleaseManager, spec_set=True, instance=True
+        federated_language.program.ReleaseManager, spec_set=True, instance=True
     )
     mock_evaluation_metrics_manager = mock.create_autospec(
-        tff.program.ReleaseManager, spec_set=True, instance=True
+        federated_language.program.ReleaseManager, spec_set=True, instance=True
     )
     mock_model_output_manager = mock.create_autospec(
-        tff.program.ReleaseManager, spec_set=True, instance=True
+        federated_language.program.ReleaseManager, spec_set=True, instance=True
     )
     if mock_program_state_manager_factory is not None:
       if round_num != 0:
@@ -451,20 +484,20 @@ class TrainFederatedModelIntegrationTest(
     absltest.TestCase, unittest.IsolatedAsyncioTestCase
 ):
 
-  @tff.test.with_context(_create_native_federated_context)
+  @federated_language.framework.with_context(_create_native_federated_context)
   async def test_fault_tolerance(self):
     datasets = [tf.data.Dataset.range(10, output_type=tf.int32)] * 3
     train_data_source = tff.program.DatasetDataSource(datasets)
     evaluation_data_source = tff.program.DatasetDataSource(datasets)
     num_clients = 3
     mock_train_metrics_manager = mock.create_autospec(
-        tff.program.ReleaseManager, spec_set=True, instance=True
+        federated_language.program.ReleaseManager, spec_set=True, instance=True
     )
     mock_evaluation_metrics_manager = mock.create_autospec(
-        tff.program.ReleaseManager, spec_set=True, instance=True
+        federated_language.program.ReleaseManager, spec_set=True, instance=True
     )
     mock_model_output_manager = mock.create_autospec(
-        tff.program.ReleaseManager, spec_set=True, instance=True
+        federated_language.program.ReleaseManager, spec_set=True, instance=True
     )
     program_state_dir = self.create_tempdir()
     program_state_manager = tff.program.FileProgramStateManager(

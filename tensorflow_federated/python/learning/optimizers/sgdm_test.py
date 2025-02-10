@@ -43,7 +43,7 @@ class SGDTest(optimizer_test_utils.TestCase, parameterized.TestCase):
     optimizer = sgdm.build_sgdm(0.01, momentum=momentum_value)
     state = optimizer.initialize(_SCALAR_SPEC)
     hparams = optimizer.get_hparams(state)
-    # Whether we specify None momentum or momentum 0.0, we shouldnt track the
+    # Whether we specify None momentum or momentum 0.0, we shouldn't track the
     # extra accumulator state. The implementation of next checks for the
     # presence or absence of momentum key--it should not be there in either
     # case.
@@ -105,6 +105,37 @@ class SGDTest(optimizer_test_utils.TestCase, parameterized.TestCase):
         lambda w: self.assertTrue(all(tf.math.is_finite(w))), weights
     )
 
+  @parameterized.named_parameters(
+      ('scalar_spec', _SCALAR_SPEC),
+      ('struct_spec', _STRUCT_SPEC),
+      ('nested_spec', _NESTED_SPEC),
+  )
+  def test_skips_none_gradients(self, spec):
+    weights = tf.nest.map_structure(lambda s: tf.ones(s.shape, s.dtype), spec)
+    gradients = tf.nest.map_structure(lambda s: None, spec)
+    optimizer = sgdm.build_sgdm(learning_rate=0.01, momentum=0.5)
+
+    state = optimizer.initialize(spec)
+    updated_state, updated_weights = optimizer.next(state, weights, gradients)
+
+    tf.nest.map_structure(self.assertAllEqual, weights, updated_weights)
+    tf.nest.map_structure(self.assertAllEqual, state, updated_state)
+
+  @parameterized.named_parameters(
+      ('empty_list', []),
+      ('empty_dict', {}),
+      ('empty_nested_structure', [([], []), {}]),
+  )
+  def test_behavior_on_empty_tree(self, structure):
+    weights = gradients = structure
+    optimizer = sgdm.build_sgdm(0.01)
+
+    state = optimizer.initialize(weights)
+    updated_state, updated_weights = optimizer.next(state, weights, gradients)
+
+    self.assertEqual(updated_state, state)
+    self.assertEqual(updated_weights, weights)
+
   def test_executes_with_indexed_slices(self):
     # TF can represent gradients as tf.IndexedSlices. This test makes sure this
     # case is supported by the optimizer.
@@ -161,8 +192,8 @@ class SGDTest(optimizer_test_utils.TestCase, parameterized.TestCase):
           genarator.normal(shape=s.shape, dtype=s.dtype) for s in weight_spec
       ]
 
-    intial_weight = random_vector()
-    model_variables_fn = lambda: [tf.Variable(v) for v in intial_weight]
+    initial_weight = random_vector()
+    model_variables_fn = lambda: [tf.Variable(v) for v in initial_weight]
     gradients = [random_vector() for _ in range(steps)]
     tff_optimizer_fn = lambda: sgdm.build_sgdm(learning_rate, momentum)
 
@@ -289,6 +320,20 @@ class SGDTest(optimizer_test_utils.TestCase, parameterized.TestCase):
     hparams = optimizer.get_hparams(state)
     updated_state = optimizer.set_hparams(state, hparams)
     self.assertEqual(state, updated_state)
+
+  def test_lr_with_different_weight_dtypes(self):
+    weights = (
+        tf.constant([0.1], dtype=tf.float32),
+        tf.constant(1.0, dtype=tf.float64),
+        tf.constant([10.0, 10.0], dtype=tf.bfloat16),
+    )
+    sgdm_optimizer = sgdm.build_sgdm(
+        learning_rate=tf.constant(0.1, dtype=tf.float32)
+    )
+    state = sgdm_optimizer.initialize(weights)
+    sgdm_optimizer.next(
+        state, weights, tf.nest.map_structure(tf.zeros_like, weights)
+    )
 
 
 if __name__ == '__main__':

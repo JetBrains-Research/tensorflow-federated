@@ -40,6 +40,7 @@ py_library(
     name = "adagrad",
     srcs = ["adagrad.py"],
     deps = [
+        ":nest_utils",
         ":optimizer",
         "//tensorflow_federated/python/common_libs:structure",
     ],
@@ -59,6 +60,7 @@ py_library(
     name = "adam",
     srcs = ["adam.py"],
     deps = [
+        ":nest_utils",
         ":optimizer",
         "//tensorflow_federated/python/common_libs:structure",
     ],
@@ -82,6 +84,7 @@ py_library(
         ":adafactor",
         ":adagrad",
         ":adam",
+        ":adamw",
         ":optimizer",
         ":rmsprop",
         ":scheduling",
@@ -121,10 +124,8 @@ py_test(
         ":yogi",
         "//tensorflow_federated/python/core/backends/native:execution_contexts",
         "//tensorflow_federated/python/core/environments/tensorflow_frontend:tensorflow_computation",
-        "//tensorflow_federated/python/core/impl/federated_context:federated_computation",
-        "//tensorflow_federated/python/core/impl/federated_context:intrinsics",
-        "//tensorflow_federated/python/core/impl/types:computation_types",
-        "//tensorflow_federated/python/core/impl/types:placements",
+        "//tensorflow_federated/python/core/environments/tensorflow_frontend:tensorflow_types",
+        "@federated_language//federated_language",
     ],
 )
 
@@ -156,6 +157,7 @@ py_library(
     name = "rmsprop",
     srcs = ["rmsprop.py"],
     deps = [
+        ":nest_utils",
         ":optimizer",
         "//tensorflow_federated/python/common_libs:structure",
     ],
@@ -195,6 +197,7 @@ py_library(
     name = "sgdm",
     srcs = ["sgdm.py"],
     deps = [
+        ":nest_utils",
         ":optimizer",
         "//tensorflow_federated/python/common_libs:structure",
     ],
@@ -214,9 +217,25 @@ py_library(
     name = "yogi",
     srcs = ["yogi.py"],
     deps = [
+        ":nest_utils",
         ":optimizer",
         "//tensorflow_federated/python/common_libs:structure",
     ],
+)
+
+py_library(
+    name = "adamw",
+    srcs = ["adamw.py"],
+    deps = [
+        ":nest_utils",
+        ":optimizer",
+        "//tensorflow_federated/python/common_libs:structure",
+    ],
+)
+
+py_library(
+    name = "nest_utils",
+    srcs = ["nest_utils.py"],
 )
 
 py_test(
@@ -227,4 +246,20 @@ py_test(
         ":optimizer_test_utils",
         ":yogi",
     ],
+)
+
+py_test(
+    name = "adamw_test",
+    srcs = ["adamw_test.py"],
+    deps = [
+        ":adamw",
+        ":optimizer",
+        ":optimizer_test_utils",
+    ],
+)
+
+py_test(
+    name = "nest_utils_test",
+    srcs = ["nest_utils_test.py"],
+    deps = [":nest_utils"],
 )

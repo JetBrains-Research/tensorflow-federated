@@ -19,18 +19,18 @@ limitations under the License
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "googlemock/include/gmock/gmock.h"
 #include "googletest/include/gtest/gtest.h"
 #include "absl/status/status.h"
-#include "tensorflow/core/platform/tstring.h"
+#include "federated_language/proto/computation.pb.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor_test_base.h"
 #include "tensorflow_federated/cc/core/impl/executors/mock_executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/sequence_intrinsics.h"
 #include "tensorflow_federated/cc/core/impl/executors/value_test_utils.h"
 #include "tensorflow_federated/cc/testing/status_matchers.h"
-#include "tensorflow_federated/proto/v0/computation.pb.h"
 
 namespace tensorflow_federated {
 
@@ -38,9 +38,6 @@ namespace {
 
 using ::absl::StatusCode;
 using ::tensorflow_federated::testing::ComputationV;
-using ::tensorflow_federated::testing::CreateSerializedRangeDatasetGraphDef;
-using ::tensorflow_federated::testing::
-    CreateSerializedZippedRangeDatasetGraphDef;
 using ::tensorflow_federated::testing::IntrinsicV;
 using ::tensorflow_federated::testing::LambdaComputation;
 using ::tensorflow_federated::testing::MakeInt64ScalarType;
@@ -62,23 +59,17 @@ class SequenceExecutorTest : public ExecutorTestBase {
 };
 
 TEST_F(SequenceExecutorTest, CreateMaterializeTFFSequence) {
-  tensorflow::tstring graph_def =
-      CreateSerializedRangeDatasetGraphDef(0, 10, 1);
-  v0::Value value_pb;
-  v0::Value::Sequence* sequence_pb = value_pb.mutable_sequence();
-  *sequence_pb->mutable_serialized_graph_def() =
-      std::string(graph_def.data(), graph_def.size());
+  v0::Value value_pb = SequenceV(0, 10, 1);
   mock_executor_->ExpectCreateMaterialize(value_pb);
   ExpectCreateMaterialize(value_pb);
 }
 
 TEST_F(SequenceExecutorTest, CreateMaterializeTFFSequenceYieldingStructures) {
-  tensorflow::tstring graph_def =
-      CreateSerializedZippedRangeDatasetGraphDef(0, 10, 1, 2);
-  v0::Value value_pb;
-  v0::Value::Sequence* sequence_pb = value_pb.mutable_sequence();
-  *sequence_pb->mutable_serialized_graph_def() =
-      std::string(graph_def.data(), graph_def.size());
+  v0::Value value_pb = SequenceV({
+      {1, 2, 3},
+      {10, 20, 30},
+      {100, 200, 300},
+  });
   mock_executor_->ExpectCreateMaterialize(value_pb);
   ExpectCreateMaterialize(value_pb);
 }
@@ -245,7 +236,7 @@ TEST_F(SequenceExecutorTest, EmbedFailsWithBadType) {
   v0::Value sequence_pb = SequenceV(1, dataset_len, 1);
   // We mutate the element type of this Sequence value to a non-embeddable type.
 
-  v0::Type function_type;
+  federated_language::Type function_type;
   *function_type.mutable_function()->mutable_result() =
       sequence_pb.sequence().element_type();
 
@@ -275,22 +266,18 @@ TEST_F(SequenceExecutorTest, EmbedFailsWithBadType) {
 
 TEST_F(SequenceExecutorTest, CreateCallStructureSequenceReduce) {
   int dataset_len = 10;
-  int num_struct_elements = 2;
   v0::Value expected_sum_result = TensorV(45l);
-  tensorflow::tstring graph_def = CreateSerializedZippedRangeDatasetGraphDef(
-      1, dataset_len, 1, num_struct_elements);
-  v0::Value sequence_value_pb;
-  *sequence_value_pb.mutable_sequence()->mutable_serialized_graph_def() =
-      std::string(graph_def.data(), graph_def.size());
-
-  v0::Type sequence_element_type;
-  for (int i = 0; i < num_struct_elements; i++) {
-    *sequence_element_type.mutable_struct_()->add_element()->mutable_value() =
-        MakeInt64ScalarType();
-  }
-
-  *sequence_value_pb.mutable_sequence()->mutable_element_type() =
-      sequence_element_type;
+  v0::Value sequence_value_pb = SequenceV({
+      {1, 11},
+      {2, 12},
+      {3, 13},
+      {4, 14},
+      {5, 15},
+      {6, 16},
+      {7, 17},
+      {8, 18},
+      {9, 19},
+  });
 
   v0::Value zero = TensorV(static_cast<int64_t>(0));
   v0::Value reduce_fn = IntrinsicV("some_passthru_intrinsic");
@@ -328,26 +315,31 @@ TEST_F(SequenceExecutorTest, CreateCallStructureSequenceReduce) {
 
 TEST_F(SequenceExecutorTest, CreateCallNestedStructureSequenceReduce) {
   int dataset_len = 10;
-  int num_struct_elements = 3;
   v0::Value expected_sum_result = TensorV(45l);
 
-  tensorflow::tstring graph_def = CreateSerializedZippedRangeDatasetGraphDef(
-      1, dataset_len, 1, num_struct_elements);
-  v0::Value sequence_value_pb;
-  *sequence_value_pb.mutable_sequence()->mutable_serialized_graph_def() =
-      std::string(graph_def.data(), graph_def.size());
+  v0::Value sequence_value_pb = SequenceV({
+      {1, 11, 21},
+      {2, 12, 22},
+      {3, 13, 23},
+      {4, 14, 24},
+      {5, 15, 25},
+      {6, 16, 26},
+      {7, 17, 27},
+      {8, 18, 28},
+      {9, 19, 29},
+  });
 
   // We make a nested type corresponding to <int,<y=int,x=int>>
   // Notice that the names appear in non-sorted order in the TFF type signature;
   // we explicitly test this case to ensure that our traversal corresponds to
   // tf.nest's traversal order, where the keys of ordered dicts are sorted.
-  v0::Type sequence_element_type;
+  federated_language::Type sequence_element_type;
   *sequence_element_type.mutable_struct_()->add_element()->mutable_value() =
       MakeInt64ScalarType();
-  v0::Type* nested_struct_type =
+  federated_language::Type* nested_struct_type =
       sequence_element_type.mutable_struct_()->add_element()->mutable_value();
   for (int i = 0; i < 2; i++) {
-    v0::StructType_Element* struct_elem =
+    federated_language::StructType_Element* struct_elem =
         nested_struct_type->mutable_struct_()->add_element();
     *struct_elem->mutable_value() = MakeInt64ScalarType();
     if (i == 0) {

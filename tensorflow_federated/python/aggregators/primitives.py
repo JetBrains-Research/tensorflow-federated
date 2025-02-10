@@ -15,26 +15,25 @@
 
 from typing import Any, NamedTuple
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 
 from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.common_libs import structure
+from tensorflow_federated.python.core.environments.tensorflow_backend import type_conversions
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.federated_context import value_impl
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
-from tensorflow_federated.python.core.impl.types import type_conversions
 
 
 def _validate_value_on_clients(value):
-  py_typecheck.check_type(value, value_impl.Value)
-  py_typecheck.check_type(value.type_signature, computation_types.FederatedType)
-  if value.type_signature.placement is not placements.CLIENTS:
+  py_typecheck.check_type(value, federated_language.Value)
+  py_typecheck.check_type(
+      value.type_signature, federated_language.FederatedType
+  )
+  if value.type_signature.placement is not federated_language.CLIENTS:
     raise TypeError(
-        '`value` argument must be a tff.Value placed at CLIENTS. Got: {!s}'
-        .format(value.type_signature)
+        '`value` argument must be a federated_language.Value placed at CLIENTS.'
+        ' Got: {!s}'.format(value.type_signature)
     )
 
 
@@ -55,8 +54,8 @@ def _zeros_for_sample(member_type):
   """Create an empty nested structure for the sample aggregation.
 
   Args:
-    member_type: A `tff.Type` representing the member components of the
-      federated type.
+    member_type: A `federated_language.Type` representing the member components
+      of the federated type.
 
   Returns:
     A function of the result of zeros to first concatenate.
@@ -77,31 +76,32 @@ def _zeros_for_sample(member_type):
 
 
 def _get_accumulator_type(member_type):
-  """Constructs a `tff.Type` for the accumulator in sample aggregation.
+  """Constructs a `federated_language.Type` for the accumulator in sample aggregation.
 
   Args:
-    member_type: A `tff.Type` representing the member components of the
-      federated type.
+    member_type: A `federated_language.Type` representing the member components
+      of the federated type.
 
   Returns:
-    The `tff.StructType` associated with the accumulator. The tuple contains
+    The `federated_language.StructType` associated with the accumulator. The
+    tuple contains
     two parts, `accumulators` and `rands`, that are parallel lists (e.g. the
     i-th index in one corresponds to the i-th index in the other). These two
     lists are used to sample from the accumulators with equal probability.
   """
 
   def add_unknown_first_dim(tensor_type):
-    return computation_types.TensorType(
+    return federated_language.TensorType(
         tensor_type.dtype, (None,) + tensor_type.shape
     )
 
   accumulator_type = type_conversions.structure_from_tensor_type_tree(
       add_unknown_first_dim, member_type
   )
-  return computation_types.to_type(
+  return federated_language.to_type(
       _Samples(
           accumulators=accumulator_type,
-          rands=computation_types.TensorType(np.float32, shape=[None]),
+          rands=federated_language.TensorType(np.float32, shape=[None]),
       )
   )
 
@@ -117,14 +117,16 @@ def federated_sample(value, max_num_samples=100):
   N is user provided `max_num_samples`.
 
   Args:
-    value: A `tff.Value` placed on the `tff.CLIENTS`.
+    value: A `federated_language.Value` placed on the
+      `federated_language.CLIENTS`.
     max_num_samples: The maximum number of samples to collect from client
       values. If fewer clients than the defined max sample size participated in
       the round of computation, the actual number of samples will equal the
       number of clients in the round.
 
   Returns:
-    At most `max_num_samples` samples of the value from the `tff.CLIENTS`.
+    At most `max_num_samples` samples of the value from the
+    `federated_language.CLIENTS`.
   """
   _validate_value_on_clients(value)
   member_type = value.type_signature.member
@@ -170,7 +172,9 @@ def federated_sample(value, max_num_samples=100):
   def report(value):
     return value.accumulators
 
-  return intrinsics.federated_aggregate(value, zeros, accumulate, merge, report)
+  return federated_language.federated_aggregate(
+      value, zeros, accumulate, merge, report
+  )
 
 
 # Lower precision types are not supported to avoid potential hard to discover
@@ -214,7 +218,7 @@ class BoundsNotPlacedAtServerError(TypeError):
   def __init__(self, placement):
     message = (
         'Provided lower_bound and upper_bound must be placed at '
-        f'tff.SERVER. Placement found: {placement}'
+        f'federated_language.SERVER. Placement found: {placement}'
     )
     super().__init__(message)
 
@@ -276,31 +280,33 @@ def _normalize_secure_quantized_sum_args(
   of `secure_quantized_sum` method. The arguments provided are also returned,
   possibly normalized to meet those expectations. In particular, if
   `lower_bound` and `upper_bound` are Python constants, these are converted to
-  `tff.SERVER`-placed federated values.
+  `federated_language.SERVER`-placed federated values.
 
   Args:
-    client_value: A `tff.Value` placed at `tff.CLIENTS`.
+    client_value: A `federated_language.Value` placed at
+      `federated_language.CLIENTS`.
     lower_bound: The smallest possible value for `client_value` (inclusive).
       Values smaller than this bound will be clipped. Must be either a scalar or
       a nested structure of scalars, matching the structure of `client_value`.
-      Must be either a Python constant or a `tff.Value` placed at `tff.SERVER`,
-      with dtype matching that of `client_value`.
+      Must be either a Python constant or a `federated_language.Value` placed at
+      `federated_language.SERVER`, with dtype matching that of `client_value`.
     upper_bound: The largest possible value for `client_value` (inclusive).
       Values greater than this bound will be clipped. Must be either a scalar or
       a nested structure of scalars, matching the structure of `client_value`.
-      Must be either a Python constant or a `tff.Value` placed at `tff.SERVER`,
-      with dtype matching that of `client_value`.
+      Must be either a Python constant or a `federated_language.Value` placed at
+      `federated_language.SERVER`, with dtype matching that of `client_value`.
 
   Returns:
     Normalized `(client_value, lower_bound, upper_bound)` tuple.
 
   Raises:
     BoundsDifferentTypesError: If `lower_bound` and `upper_bound` are not both
-      `tff.Value`s or both not `tff.Value`s.
+      `federated_language.Value`s or both not `federated_language.Value`s.
     BoundsDifferentSignaturesError: If `lower_bound.type_signature` and
       `upper_bound.type_signature` are not equal.
     BoundsNotPlacedAtServerError: If `lower_bound.type_signature` and
-      `upper_bound.type_signature` are not placed at `tff.SERVER`.
+      `upper_bound.type_signature` are not placed at
+      `federated_language.SERVER`.
     StructuredBoundsTypeMismatchError: If `lower_bound` and `upper_bound` are
       structures and do not match the structure and dtypes of `client_value`.
     ScalarBoundStructValueDTypeError: If `lower_bound` and `upper_bound` are
@@ -314,7 +320,7 @@ def _normalize_secure_quantized_sum_args(
   _validate_value_on_clients(client_value)
   client_value_member = client_value.type_signature.member
   if isinstance(
-      client_value.type_signature.member, computation_types.StructType
+      client_value.type_signature.member, federated_language.StructType
   ):
     dtypes = [v.dtype for v in structure.flatten(client_value_member)]
     for dtype in dtypes:
@@ -324,33 +330,37 @@ def _normalize_secure_quantized_sum_args(
     _check_secure_quantized_sum_dtype(dtypes)
 
   # Validation of bounds.
-  if isinstance(lower_bound, value_impl.Value) != isinstance(
-      upper_bound, value_impl.Value
+  if isinstance(lower_bound, federated_language.Value) != isinstance(
+      upper_bound, federated_language.Value
   ):
     raise BoundsDifferentTypesError(lower_bound, upper_bound)
-  elif not isinstance(lower_bound, value_impl.Value):
+  elif not isinstance(lower_bound, federated_language.Value):
     # Normalization of bounds to federated values.
-    lower_bound = intrinsics.federated_value(lower_bound, placements.SERVER)
-    upper_bound = intrinsics.federated_value(upper_bound, placements.SERVER)
+    lower_bound = federated_language.federated_value(
+        lower_bound, federated_language.SERVER
+    )
+    upper_bound = federated_language.federated_value(
+        upper_bound, federated_language.SERVER
+    )
 
   if lower_bound.type_signature != upper_bound.type_signature:
     raise BoundsDifferentSignaturesError(lower_bound, upper_bound)
   # The remaining type checks only use lower_bound as the upper_bound has
   # itendical type_signature.
-  if lower_bound.type_signature.placement != placements.SERVER:  # pytype: disable=attribute-error
+  if lower_bound.type_signature.placement != federated_language.SERVER:  # pytype: disable=attribute-error
     raise BoundsNotPlacedAtServerError(lower_bound.type_signature.placement)  # pytype: disable=attribute-error
 
   # Validation of client_value and bounds compatibility.
   bound_member = lower_bound.type_signature.member  # pytype: disable=attribute-error
-  if isinstance(bound_member, computation_types.StructType):
-    if not isinstance(client_value_member, computation_types.StructType) or (
+  if isinstance(bound_member, federated_language.StructType):
+    if not isinstance(client_value_member, federated_language.StructType) or (
         structure.map_structure(lambda v: v.dtype, bound_member)
         != structure.map_structure(lambda v: v.dtype, client_value_member)
     ):
       raise StructuredBoundsTypeMismatchError(client_value_member, bound_member)
   else:
     # If bounds are scalar, must be compatible with all tensors in client_value.
-    if isinstance(client_value_member, computation_types.StructType):
+    if isinstance(client_value_member, federated_language.StructType):
       if len(set(dtypes)) > 1 or (bound_member.dtype != dtypes[0]):
         raise ScalarBoundStructValueDTypeError(
             client_value_member, bound_member
@@ -367,8 +377,9 @@ def _normalize_secure_quantized_sum_args(
 def _client_tensor_shift_for_secure_sum(value, lower_bound, upper_bound):
   """Mapping to be applied to every tensor before secure sum.
 
-  This operation is performed on `tff.CLIENTS` to prepare values to format
-  compatible with `tff.federated_secure_sum_bitwidth` operator.
+  This operation is performed on `federated_language.CLIENTS` to prepare values
+  to format
+  compatible with `federated_language.federated_secure_sum_bitwidth` operator.
 
   This clips elements of `value` to `[lower_bound, upper_bound]`, shifts and
   scales it to range `[0, 2**32-1]` and casts it to `tf.int64`. The specific
@@ -436,8 +447,9 @@ def _server_tensor_shift_for_secure_sum(
 ):
   """Mapping to be applied to every tensor after secure sum.
 
-  This operation is performed on `tff.SERVER` to dequantize outputs of the
-  `tff.federated_secure_sum_bitwidth` operator.
+  This operation is performed on `federated_language.SERVER` to dequantize
+  outputs of the
+  `federated_language.federated_secure_sum_bitwidth` operator.
 
   It is reverse of `_client_tensor_shift_for_secure_sum` taking into account
   that `num_summands` elements were summed, so the inverse shift needs to be
@@ -522,7 +534,8 @@ def secure_quantized_sum(client_value, lower_bound, upper_bound):
   corresponding Tensor in `client_value`.
 
   This method converts each Tensor in provided `client_value` to appropriate
-  format and uses the `tff.federated_secure_sum_bitwidth` operator to realize
+  format and uses the `federated_language.federated_secure_sum_bitwidth`
+  operator to realize
   the sum.
 
   The dtype of Tensors in provided `client_value` can be one of `[tf.int32,
@@ -565,20 +578,22 @@ def secure_quantized_sum(client_value, lower_bound, upper_bound):
   element should be expected for `tf.float32` and up to `1e-5` for `tf.float64`.
 
   Args:
-    client_value: A `tff.Value` placed at `tff.CLIENTS`.
+    client_value: A `federated_language.Value` placed at
+      `federated_language.CLIENTS`.
     lower_bound: The smallest possible value for `client_value` (inclusive).
       Values smaller than this bound will be clipped. Must be either a scalar or
       a nested structure of scalars, matching the structure of `client_value`.
-      Must be either a Python constant or a `tff.Value` placed at `tff.SERVER`,
-      with dtype matching that of `client_value`.
+      Must be either a Python constant or a `federated_language.Value` placed at
+      `federated_language.SERVER`, with dtype matching that of `client_value`.
     upper_bound: The largest possible value for `client_value` (inclusive).
       Values greater than this bound will be clipped. Must be either a scalar or
       a nested structure of scalars, matching the structure of `client_value`.
-      Must be either a Python constant or a `tff.Value` placed at `tff.SERVER`,
-      with dtype matching that of `client_value`.
+      Must be either a Python constant or a `federated_language.Value` placed at
+      `federated_language.SERVER`, with dtype matching that of `client_value`.
 
   Returns:
-    Summed `client_value` placed at `tff.SERVER`, of the same dtype as
+    Summed `client_value` placed at `federated_language.SERVER`, of the same
+    dtype as
     `client_value`.
 
   Raises:
@@ -630,30 +645,32 @@ def secure_quantized_sum(client_value, lower_bound, upper_bound):
           temp_box[0],
       )
 
-  client_one = intrinsics.federated_value(1, placements.CLIENTS)
+  client_one = federated_language.federated_value(1, federated_language.CLIENTS)
 
   # Orchestration.
-  client_lower_bound = intrinsics.federated_broadcast(lower_bound)
-  client_upper_bound = intrinsics.federated_broadcast(upper_bound)
+  client_lower_bound = federated_language.federated_broadcast(lower_bound)
+  client_upper_bound = federated_language.federated_broadcast(upper_bound)
 
-  value = intrinsics.federated_map(
+  value = federated_language.federated_map(
       client_shift, (client_value, client_lower_bound, client_upper_bound)
   )
-  num_summands = intrinsics.federated_secure_sum_bitwidth(
+  num_summands = federated_language.federated_secure_sum_bitwidth(
       client_one, bitwidth=1
   )
 
   secagg_value_type = value.type_signature.member  # pytype: disable=attribute-error
   assert isinstance(
-      secagg_value_type, computation_types.TensorType
-  ) or isinstance(secagg_value_type, computation_types.StructType)
-  if isinstance(secagg_value_type, computation_types.TensorType):
+      secagg_value_type, federated_language.TensorType
+  ) or isinstance(secagg_value_type, federated_language.StructType)
+  if isinstance(secagg_value_type, federated_language.TensorType):
     bitwidths = 32
   else:
     bitwidths = structure.map_structure(lambda t: 32, secagg_value_type)
 
-  value = intrinsics.federated_secure_sum_bitwidth(value, bitwidth=bitwidths)
-  value = intrinsics.federated_map(
+  value = federated_language.federated_secure_sum_bitwidth(
+      value, bitwidth=bitwidths
+  )
+  value = federated_language.federated_map(
       server_shift, (value, lower_bound, upper_bound, num_summands)
   )
   return value

@@ -8,6 +8,377 @@ and this project adheres to
 
 ## Unreleased
 
+### Added
+
+*   `tff.StructType.items()`, this API makes it easier to iterate over
+    `tff.StrucType` without having to deal with hard to discover and use
+    `tff.structure.*` APIs.
+*   The abstract class `DPTensorAggregator` and the child `DPQuantileAggregator`
+    (along with the factory class). `DPQuantileAggregator` is currently a
+    skeleton; future CLs will implement the member functions.
+*   `DPQuantileAggregator::AggregateTensors` performs either a `push_back` or
+    reservoir sampling, depending on size of member `buffer_`. The reservoir
+    sampling functionality is performed by `::InsertWithReservoirSampling`.
+*   `DPQuantileAggregator::MergeWith` copies as much data over from the other
+    aggregator's `buffer_` until capacity is hit, then performs reservoir
+    sampling.
+*   `tff.program.ComputationArg`, which is helpful when creating a federated
+    platform.
+*   `DPQuantileAggregator::ReportWithEpsilonAndDelta` implements a DP algorithm
+    to find quantiles by looping over a histogram with growing bucket size.
+*   `DPQuantileAggregator::Serialize` and the corresponding
+    `DPQuantileAggregatorFactory::Deserialze` to save and load aggregator state.
+*   Ability to disable DP when `epsilon` is sufficiently large in
+    `DPQuantileAggregator::ReportWithEpsilonAndDelta`.
+*   `DPTensorAggregatorBundle`, a wrapper around one or more instances of
+    `DPTensorAggregator`, and its factory.
+*   `DPTensorAggregatorBunde::AggregateTensors` checks inputs before delegating
+    work to the inner aggregators.
+*   A new constructor for `InputTensorList` that takes as input an `std::vector`
+    of `const Tensor*`. `DPTensorAggregatorBunde::AggregateTensors` uses this to
+    split its input across its inner aggregators, which may expect varying
+    sizes.
+*   `DPTensorAggregator::IsCompatible` will allow `DPTensorAggregatorBundle` to
+    check if all inner aggregators are compatible for merge prior to calling
+    their `MergeWith` functions.
+*   `DPTensorAggregatorBundle::MergeWith` checks compatibility before delegating
+    merging to inner aggregators. The compatibility check is done by
+    `DPTensorAggregatorBundle::IsCompatible`.
+*   `DPTensorAggregatorBundle::Serialize` and
+    `DPTensorAggregatorBundleFactory::Deserialize` enable storage and retrieval
+    of the state of a `DPTensorAggregatorBundle`.
+*   `DPTensorAggregatorBundle::TakeOutputs` calls the inner aggregator's
+    `ReportWithEpsilonAndDelta` methods and stitches the outputs together.
+*   Number of round retries to training metrics in
+    `tff.learning.programs.train_model`.
+
+### Fixed
+
+*   Buffer overrun in `AggVectorIterator` when passing in an empty `TensorData`.
+*   Type of noise sampled in DPClosedDomainHistogram; now it is the intended
+    type (e.g., float) instead of always int.
+*   Fixed incorrect MOCK_METHOD usage in various mocks.
+
+### Changed
+
+*   Moved language-related documentation to Federated Language.
+*   `DPTensorAggregatorBundleFactory::CreateInternal` now checks validity of the
+    epsilon and delta parameters of its given intrinsic.
+*   When `DPGroupByFactory::CreateInternal` receives an `epsilon` at or above
+    `kEpsilonThreshold`, it no longer bothers splitting it across the inner
+    aggregators.
+*   Moved the tests of input validity from `DPQuantileAggregator` to the parent
+    class `DPTensorAggregator`. This will enable `DPTensorAggregatorBundle` to
+    check that the input is valid before passing to the aggregators it contains.
+*   Moved the tests of compatibility from `DPQuantileAggregator::MergeWith` to
+    `DPQuantileAggregator::IsCompatible`.
+*   Updated `MeasuredProcessOutput` to be a `NamedTuple`.
+
+### Removed
+
+*   `tff.program.check_in_federated_context`, use
+    `federated_language.program.check_in_federated_context` instead.
+*   `tff.program.ComputationArg`, use
+    `federated_language.program.ComputationArg` instead.
+*   `tff.program.contains_only_server_placed_data`, use
+    `federated_language.program.contains_only_server_placed_data` instead.
+*   `tff.program.DelayedReleaseManager`, use
+    `federated_language.program.DelayedReleaseManager` instead.
+*   `tff.program.FederatedContext`, use
+    `federated_language.program.FederatedContext` instead.
+*   `tff.program.FederatedDataSource`, use
+    `federated_language.program.FederatedDataSource` instead.
+*   `tff.program.FederatedDataSourceIterator`, use
+    `federated_language.program.FederatedDataSourceIterator` instead.
+*   `tff.program.FilteringReleaseManager`, use
+    `federated_language.program.FilteringReleaseManager` instead.
+*   `tff.program.GroupingReleaseManager`, use
+    `federated_language.program.GroupingReleaseManager` instead.
+*   `tff.program.LoggingReleaseManager`, use
+    `federated_language.program.LoggingReleaseManager` instead.
+*   `tff.program.MaterializableStructure`, use
+    `federated_language.program.MaterializableStructure` instead.
+*   `tff.program.MaterializableTypeSignature`, use
+    `federated_language.program.MaterializableTypeSignature` instead.
+*   `tff.program.MaterializableValue`, use
+    `federated_language.program.MaterializableValue` instead.
+*   `tff.program.MaterializableValueReference`, use
+    `federated_language.program.MaterializableValueReference` instead.
+*   `tff.program.materialize_value`, use
+    `federated_language.program.materialize_value` instead.
+*   `tff.program.MaterializedStructure`, use
+    `federated_language.program.MaterializedStructure` instead.
+*   `tff.program.MaterializedValue`, use
+    `federated_language.program.MaterializedValue` instead.
+*   `tff.program.MemoryReleaseManager`, use
+    `federated_language.program.MemoryReleaseManager` instead.
+*   `tff.program.NotFilterableError`, use
+    `federated_language.program.NotFilterableError` instead.
+*   `tff.program.PeriodicReleaseManager`, use
+    `federated_language.program.PeriodicReleaseManager` instead.
+*   `tff.program.ProgramStateExistsError`, use
+    `federated_language.program.ProgramStateExistsError` instead.
+*   `tff.program.ProgramStateManager`, use
+    `federated_language.program.ProgramStateManager` instead.
+*   `tff.program.ProgramStateNotFoundError`, use
+    `federated_language.program.ProgramStateNotFoundError` instead.
+*   `tff.program.ProgramStateStructure`, use
+    `federated_language.program.ProgramStateStructure` instead.
+*   `tff.program.ProgramStateValue`, use
+    `federated_language.program.ProgramStateValue` instead.
+*   `tff.program.ReleasableStructure`, use
+    `federated_language.program.ReleasableStructure` instead.
+*   `tff.program.ReleasableValue`, use
+    `federated_language.program.ReleasableValue` instead.
+*   `tff.program.ReleaseManager`, use
+    `federated_language.program.ReleaseManager` instead.
+*   `tff.types.AbstractType`, use `federated_language.AbstractType` instead.
+*   `tff.types.FederatedType`, use `federated_language.FederatedType` instead.
+*   `tff.types.FunctionType`, use `federated_language.FunctionType` instead.
+*   `tff.types.PlacementType`, use `federated_language.PlacementType` instead.
+*   `tff.types.SequenceType`, use `federated_language.SequenceType` instead.
+*   `tff.types.StructType`, use `federated_language.StructType` instead.
+*   `tff.types.StructWithPythonType`, use
+    `federated_language.StructWithPythonType` instead.
+*   `tff.types.tensorflow_to_type`, this function is no longer used.
+*   `tff.types.TensorType`, use `federated_language.TensorType` instead.
+*   `tff.types.to_type`, use `federated_language.to_type` instead.
+*   `tff.types.Type`, use `federated_language.Type` instead.
+*   `tff.types.TypeNotAssignableError`, use
+    `federated_language.TypeNotAssignableError` instead.
+*   `tff.types.TypesNotIdenticalError`, use
+    `federated_language.TypesNotIdenticalError` instead.
+*   `tff.types.UnexpectedTypeError`, use
+    `federated_language.UnexpectedTypeError` instead.
+*   `tff.types.deserialize_type`, use `federated_language.Types.from_proto`
+    instead.
+*   `tff.types.serialize_type`, use `federated_language.Types.to_proto` instead.
+*   `tff.types.ArrayShape`, use `federated_language.ArrayShape` instead
+*   `tff.types.is_shape_fully_defined`, use
+    `federated_language.array_shape_is_fully_defined` instead
+*   `tff.types.num_elements_in_shape`, use
+    `federated_language.num_elements_in_array_shape` instead
+*   `tff.types.is_tensorflow_compatible_type`, this function is no longer used
+    externally.
+*   `tff.types.is_structure_of_floats`, use
+    `federated_language.framework.is_structure_of_floats` instead.
+*   `tff.types.is_structure_of_integers`, use
+    `federated_language.framework.is_structure_of_integers` instead.
+*   `tff.types.is_structure_of_tensors`, use
+    `federated_language.framework.is_structure_of_tensors` instead.
+*   `tff.types.contains`, use `federated_language.framework.type_contains`
+    instead.
+*   `tff.types.contains_only`, use
+    `federated_language.framework.type_contains_only` instead.
+*   `tff.types.count`, use `federated_language.framework.type_count` instead.
+*   `tff.TypedObject`, use `federated_language.TypedObject` instead.
+*   `tff.CLIENTS`, use `federated_language.CLIENTS` instead.
+*   `tff.SERVER`, use `federated_language.SERVER` instead.
+*   `tff.types.type_mismatch_error_message`, this function is no longer used.
+*   `tff.types.TypeRelation`, this object is no longer used.
+*   `tff.types.TypesNotEquivalentError`, use
+    `federated_language.framework.TypesNotEquivalentError` instead.
+*   `tff.framework.deserialize_computation`, use
+    `federated_language.framework.ConcreteComputation.from_proto` instead.
+*   `tff.framework.serialize_computation`, use
+    `federated_language.framework.ConcreteComputation.to_proto` instead.
+*   `tff.framework.Executor`, use `federated_language.framework.Executor`
+    instead.
+*   `tff.framework.CardinalitiesType`, use
+    `federated_language.framework.CardinalitiesType` instead.
+*   `tff.framework.ExecutorFactory`, use
+    `federated_language.framework.ExecutorFactory` instead.
+*   `tff.framework.RetryableError`, use
+    `federated_language.framework.RetryableError` instead.
+*   `tff.framework.AsyncExecutionContext`, use
+    `federated_language.framework.AsyncExecutionContext` instead.
+*   `tff.framework.SyncExecutionContext`, use
+    `federated_language.framework.SyncExecutionContext` instead.
+*   `tff.framework.Block`, use `federated_language.framework.Block` instead.
+*   `tff.framework.Call`, use `federated_language.framework.Call` instead.
+*   `tff.framework.CompiledComputation`, use
+    `federated_language.frameworkCompiled.Computation` instead.
+*   `tff.framework.ComputationBuilding.Block`, use
+    `federated_language.frameworkComputationBuilding.Block` instead.
+*   `tff.framework.Data`, use `federated_language.framework.Data` instead.
+*   `tff.framework.Intrinsic`, use `federated_language.framework.Intrinsic`
+    instead.
+*   `tff.framework.Lambda`, use `federated_language.framework.Lambda` instead.
+*   `tff.framework.Literal`, use `federated_language.framework.Literal` instead.
+*   `tff.framework.Placement`, use `federated_language.framework.Placement`
+    instead.
+*   `tff.framework.Reference`, use `federated_language.framework.Reference`
+    instead.
+*   `tff.framework.Selection`, use `federated_language.framework.Selection`
+    instead.
+*   `tff.framework.Struct`, use `federated_language.framework.Struct` instead.
+*   `tff.framework.UnexpectedBlockError`, use
+    `federated_language.framework.UnexpectedBlockError` instead.
+*   `tff.framework.FEDERATED_AGGREGATE`, use
+    `federated_language.framework.FEDERATED_AGGREGATE` instead.
+*   `tff.framework.FEDERATED_APPLY`, use
+    `federated_language.framework.FEDERATED_APPLY` instead.
+*   `tff.framework.FEDERATED_BROADCAST`, use
+    `federated_language.framework.FEDERATED_BROADCAST` instead.
+*   `tff.framework.FEDERATED_EVAL_AT_CLIENTS`, use
+    `federated_language.framework.FEDERATED_EVAL_AT_CLIENTS` instead.
+*   `tff.framework.FEDERATED_EVAL_AT_SERVER`, use
+    `federated_language.framework.FEDERATED_EVAL_AT_SERVER` instead.
+*   `tff.framework.FEDERATED_MAP`, use
+    `federated_language.framework.FEDERATED_MAP` instead.
+*   `tff.framework.FEDERATED_MAP_ALL_EQUAL`, use
+    `federated_language.framework.FEDERATED_MAP_ALL_EQUAL` instead.
+*   `tff.framework.FEDERATED_SUM`, use
+    `federated_language.framework.FEDERATED_SUM` instead.
+*   `tff.framework.FEDERATED_VALUE_AT_CLIENTS`, use
+    `federated_language.framework.FEDERATED_VALUE_AT_CLIENTS` instead.
+*   `tff.framework.FEDERATED_VALUE_AT_SERVER`, use
+    `federated_language.framework.FEDERATED_VALUE_AT_SERVER` instead.
+*   `tff.framework.FEDERATED_ZIP_AT_CLIENTS`, use
+    `federated_language.framework.FEDERATED_ZIP_AT_CLIENTS` instead.
+*   `tff.framework.FEDERATED_ZIP_AT_SERVER`, use
+    `federated_language.framework.FEDERATED_ZIP_AT_SERVER` instead.
+*   `tff.FederatedType`, use`federated_language.FederatedType` instead.
+*   `tff.FunctionType`, use`federated_language.FunctionType` instead.
+*   `tff.SequenceType`, use`federated_language.SequenceType` instead.
+*   `tff.StructType`, use`federated_language.StructType` instead.
+*   `tff.StructWithPythonType`, use`federated_language.StructWithPythonType`
+    instead.
+*   `tff.TensorType`, use`federated_language.TensorType` instead.
+*   `tff.to_type`, use`federated_language.to_type` instead.
+*   `tff.Type`, use`federated_language.Type` instead.
+*   `tff.to_value`, use`federated_language.to_value` instead.
+*   `tff.Value`, use `federated_language.Value` instead.
+*   `tff.Computation`, use`federated_language.Computation` instead.
+*   `tff.federated_aggregate`, use `federated_language.federated_aggregate`
+    instead.
+*   `tff.federated_broadcast`, use `federated_language.federated_broadcast`
+*   `tff.federated_computation`, use `federated_language.federated_computation`
+    instead.
+*   `tff.federated_eval`, use `federated_language.federated_eval` instead.
+*   `tff.federated_map`, use `federated_language.federated_map` instead.
+*   `tff.federated_max`, use `federated_language.federated_max` instead.
+*   `tff.federated_mean`, use `federated_language.federated_mean` instead.
+*   `tff.federated_min`, use `federated_language.federated_min` instead.
+*   `tff.federated_secure_select`, use
+    `federated_language.federated_secure_select` instead.
+*   `tff.federated_secure_sum`, use `federated_language.federated_secure_sum`
+    instead.
+*   `tff.federated_secure_sum_bitwidth`, use
+    `federated_language.federated_secure_sum_bitwidth` instead.
+*   `tff.federated_select`, use `federated_language.federated_select` instead.
+*   `tff.federated_sum`, use `federated_language.federated_sum` instead.
+*   `tff.federated_value`, use `federated_language.federated_value` instead.
+*   `tff.federated_zip`, use `federated_language.federated_zip` instead.
+*   `tff.sequence_map`, use `federated_language.sequence_map` instead.
+*   `tff.sequence_reduce`, use `federated_language.sequence_reduce` instead.
+*   `tff.sequence_sum`, use `federated_language.sequence_sum` instead.
+*   `tff.framework.ConcreteComputation`, use
+    `federated_language.framework.ConcreteComputation` instead.
+*   `tff.framework.pack_args_into_struct`, use
+    `federated_language.framework.pack_args_into_struct` instead.
+*   `tff.framework.unpack_args_from_struct`, use
+    `federated_language.framework.unpack_args_from_struct` instead.
+*   `tff.framework.PlacementLiteral`, use
+    `federated_language.framework.PlacementLiteral` instead.
+*   `tff.framework.unique_name_generator`, use
+    `federated_language.framework.unique_name_generator` instead.
+*   `tff.framework.transform_postorder`, use
+    `federated_language.framework.transform_postorder` instead.
+*   `tff.framework.transform_preorder`, use
+    `federated_language.framework.transform_preorder` instead.
+*   `tff.test.assert_type_assignable_from`, use
+    `federated_language.Type.is_assignable_from` instead.
+*   `tff.test.create_runtime_error_context`, use
+    `federated_language.framework.RuntimeErrorContext` instead.
+*   `tff.test.set_no_default_context`, use
+    `federated_language.framework.set_no_default_context` instead.
+*   `tff.test.assert_contains_secure_aggregation`, use
+    `federated_language.framework.computation_contains` instead.
+*   `tff.test.assert_not_contains_secure_aggregation`, use
+    `federated_language.framework.computation_contains` instead.
+*   `tff.test.assert_contains_unsecure_aggregation`, use
+    `federated_language.framework.computation_contains` instead.
+*   `tff.test.assert_not_contains_unsecure_aggregation`, use
+    `federated_language.framework.computation_contains` instead.
+*   `tff.test.assert_types_equivalent`, use
+    `federated_language.Type.is_equivalent_to` instead.
+
+## Release 0.88.0
+
+### Added
+
+*   `tff.tensorflow.to_type`.
+*   Added `pack_args_into_struct` and `unpack_args_from_struct` to the public
+    API under `framework`.
+
+### Changed
+
+*   Add round end timestamp to train metrics in
+    `tff.learning.programs.train_model`.
+
+### Deprecated
+
+*   `tff.types.tensorflow_to_type`, use `tff.tensorflow.to_type` instead.
+
+### Changed
+
+*   Updated to use an environment-agnostic way to represent a sequence of data.
+*   Updated JAX computations and contexts to be able to handle sequence types.
+*   Moved `tff.types.structure_from_tensor_type_tree` and
+    `tff.types.type_to_tf_tensor_specs` to the `tff.tensorflow` package.
+
+### Removed
+
+*   `tff.framework.merge_cardinalities`
+*   `tff.framework.CardinalityCarrying`
+*   `tff.framework.CardinalityFreeDataDescriptor`
+*   `tff.framework.CreateDataDescriptor`
+*   `tff.framework.DataDescriptor`
+*   `tff.framework.Ingestable`
+
+## Release 0.87.0
+
+### Added
+
+*   An implementation of AdamW to `tff.learning.optimizers`.
+*   Added Executor class to public API.
+
+### Changed
+
+*   Support `None` gradients in `tff.learning.optimizers`. This mimics the
+    behavior of `tf.keras.optimizers` - gradients that are `None` will be
+    skipped, and their corresponding optimizer output (e.g. momentum and
+    weights) will not be updated.
+*   The behavior of `DPGroupingFederatedSum::Clamp`: it now sets negatives to 0.
+    Associated test code has been updated. Reason: sensitivity calculation for
+    DP noise was calibrated for non-negative values.
+*   Change tutorials to use `tff.learning.optimizers` in conjunction with
+    `tff.learning` computations.
+*   `tff.simulation.datasets.TestClientData` only accepts dictionaries whose
+    leaf nodes are not `tf.Tensor`s.
+
+### Fixed
+
+*   A bug where `tff.learning.optimizers.build_adafactor` would update its step
+    counter twice upon every invocation of `.next()`.
+*   A bug where tensor learning rates for `tff.learning.optimizers.build_sgdm`
+    would fail with mixed dtype gradients.
+*   A bug where different optimizers had different behavior on empty weights
+    structures. TFF optimizers now consistently accept and function as no-ops on
+    empty weight structures.
+*   A bug where `tff.simulation.datasets.TestClientData.dataset_computation`
+    yielded datasets of indeterminate shape.
+
+### Removed
+
+*   `tff.jax_computation`, use `tff.jax.computation` instead.
+*   `tff.profiler`, this API is not used.
+*   Removed various stale tutorials.
+*   Removed `structure` from `tff.program.SavedModelFileReleaseManager`'s
+    `get_value` method parameters.
+*   Removed support for `tf.keras.optimizers` in `tff.learning`.
+
 ## Release 0.86.0
 
 ### Added
@@ -20,6 +391,8 @@ and this project adheres to
 
 *   Replaced the `tensor` on the `Value` protobuf with an `array` field and
     updated the serialization logic to use this new field.
+*   `tff.program.FileProgramStateManager` to be able to keep program states at a
+    specified interval (every k states).
 
 ## Release 0.85.0
 
@@ -1817,7 +2190,7 @@ amitport, ronaldseoh
 *   Removed `tff.framework.set_default_executor` function, instead you should
     use the more convenient `tff.backends.native.set_local_execution_context`
     function or manually construct a context an set it using
-    `tff.framework.set_default_context`.
+    `federated_language.framework.set_default_context`.
 *   The `tff.Computation` base class now contains an abstract `__hash__` method,
     to ensure compilation results can be cached. Any custom implementations of
     this interface should be updated accordingly.

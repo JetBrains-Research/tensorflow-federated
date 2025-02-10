@@ -30,6 +30,13 @@ constexpr char kDPGroupByUri[] = "fedsql_dp_group_by";
 // URI of DPGroupingFederatedSum
 constexpr char kDPSumUri[] = "GoogleSQL:$differential_privacy_sum";
 
+// URI of DPQuantileAggregator
+constexpr char kDPQuantileUri[] =
+    "GoogleSQL:$differential_privacy_percentile_cont";
+
+constexpr char kDPTensorAggregatorBundleUri[] =
+    "differential_privacy_tensor_aggregator_bundle";
+
 // In the DPGroupingFederatedSum intrinsic, the following are the indices of
 // the norm bound parameters.
 constexpr int kLinfinityIndex = 0;
@@ -37,8 +44,26 @@ constexpr int kL1Index = 1;
 constexpr int kL2Index = 2;
 constexpr int kNumDPSumParameters = 3;
 
+// In the intrinsics that represent DP queries, the following are the indices of
+// the epsilon and delta parameters.
+constexpr int kEpsilonIndex = 0;
+constexpr int kDeltaIndex = 1;
+
 // The epsilon beyond which we will not use DP noise
 constexpr double kEpsilonThreshold = 1e20;
+
+// The maximum number of inputs that can be stored in the DPQuantileAggregator.
+constexpr int kDPQuantileMaxInputs = 50000;
+
+// The maximum magnitude of the output of the DPQuantileAggregator.
+constexpr double kDPQuantileMaxOutputMagnitude = 1e20;
+
+// Parameters that govern how DPQuantileAggregator buckets the inputs.
+// First buckets are linear e.g. 0.0, 0.1, 0.2, ..., 100.0
+// Then buckets are exponential e.g. 100 * 1.01^k.
+constexpr double kDPQuantileLinearRate = 0.1;
+constexpr double kDPQuantileExponentialRate = 1.01;
+constexpr double kDPQuantileEndOfLinearGrowth = 100;
 
 }  // namespace aggregation
 }  // namespace tensorflow_federated

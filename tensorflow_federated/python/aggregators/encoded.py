@@ -17,18 +17,14 @@ import collections
 from collections.abc import Callable
 import typing
 
+import federated_language
 import tensorflow as tf
 import tree
 
 from tensorflow_federated.python.aggregators import factory
 from tensorflow_federated.python.common_libs import py_typecheck
+from tensorflow_federated.python.core.environments.tensorflow_backend import type_conversions
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import array_shape
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
-from tensorflow_federated.python.core.impl.types import type_conversions
 from tensorflow_federated.python.core.templates import aggregation_process
 from tensorflow_federated.python.core.templates import measured_process
 from tensorflow_model_optimization.python.core.internal import tensor_encoding as te
@@ -93,7 +89,8 @@ class EncodedSumFactory(factory.UnweightedAggregationFactory):
 
     Given a `value_type` in the `create` method, this classmethod configures the
     `EncodedSumFactory` to apply uniform quantization to all instances of
-    `tff.TensorType` in the `value_type` which have more than `threshold`
+    `federated_language.TensorType` in the `value_type` which have more than
+    `threshold`
     elements.
 
     Precisely, for each tensor `t`, this operation corresponds to
@@ -115,7 +112,10 @@ class EncodedSumFactory(factory.UnweightedAggregationFactory):
     _check_threshold(threshold)
 
     def encoder_fn(value_spec):
-      if array_shape.num_elements_in_shape(value_spec.shape) > threshold:
+      if (
+          federated_language.num_elements_in_array_shape(value_spec.shape)
+          > threshold
+      ):
         return te.encoders.as_gather_encoder(
             te.encoders.uniform_quantization(quantization_bits, **kwargs),
             value_spec,
@@ -152,13 +152,16 @@ def _encoded_init_fn(encoders):
     encoders: A collection of `GatherEncoder` objects.
 
   Returns:
-    A no-arg `tff.Computation` returning initial state for `EncodedSumFactory`.
+    A no-arg `federated_language.Computation` returning initial state for
+    `EncodedSumFactory`.
   """
   init_fn_tf = tensorflow_computation.tf_computation(
       lambda: tf.nest.map_structure(lambda e: e.initial_state(), encoders)
   )
-  init_fn = federated_computation.federated_computation(
-      lambda: intrinsics.federated_eval(init_fn_tf, placements.SERVER)
+  init_fn = federated_language.federated_computation(
+      lambda: federated_language.federated_eval(
+          init_fn_tf, federated_language.SERVER
+      )
   )
   return init_fn
 
@@ -175,12 +178,15 @@ def _encoded_next_fn(server_state_type, value_type, encoders):
   * Update the state placed at server (`update_state_fn`).
 
   Args:
-    server_state_type: A `tff.Type` of the expected state placed at server.
-    value_type: An unplaced `tff.Type` of the value to be aggregated.
+    server_state_type: A `federated_language.Type` of the expected state placed
+      at server.
+    value_type: An unplaced `federated_language.Type` of the value to be
+      aggregated.
     encoders: A collection of `GatherEncoder` objects.
 
   Returns:
-    A `tff.Computation` for `EncodedSumFactory`, with the type signature of
+    A `federated_language.Computation` for `EncodedSumFactory`, with the type
+    signature of
     `(server_state_type, value_type@CLIENTS) ->
     MeasuredProcessOutput(server_state_type, value_type@SERVER, ()@SERVER)`
   """
@@ -201,7 +207,8 @@ def _encoded_next_fn(server_state_type, value_type, encoders):
 
   # TODO: b/139844355 - Get rid of decode_before_sum_params.
   # We pass decode_before_sum_params to the encode method, because TFF currently
-  # does not have a mechanism to make a tff.SERVER placed value available inside
+  # does not have a mechanism to make a federated_language.SERVER placed value
+  # available inside
   # of intrinsics.federated_aggregate - in production, this could mean an
   # intermediary aggregator node. So currently, we send the params to clients,
   # and ask them to send them back as part of the encoded structure.
@@ -320,36 +327,38 @@ def _encoded_next_fn(server_state_type, value_type, encoders):
   def report_fn(acc):
     return acc
 
-  @federated_computation.federated_computation(
+  @federated_language.federated_computation(
       server_state_type,
-      computation_types.FederatedType(value_type, placements.CLIENTS),
+      federated_language.FederatedType(value_type, federated_language.CLIENTS),
   )
   def next_fn(state, value):
     encode_params, decode_before_sum_params, decode_after_sum_params = (
-        intrinsics.federated_map(get_params_fn, state)
+        federated_language.federated_map(get_params_fn, state)
     )
-    encode_params = intrinsics.federated_broadcast(encode_params)
-    decode_before_sum_params = intrinsics.federated_broadcast(
+    encode_params = federated_language.federated_broadcast(encode_params)
+    decode_before_sum_params = federated_language.federated_broadcast(
         decode_before_sum_params
     )
 
-    encoded_values = intrinsics.federated_map(
+    encoded_values = federated_language.federated_map(
         encode_fn, [value, encode_params, decode_before_sum_params]
     )
 
-    aggregated_values = intrinsics.federated_aggregate(
+    aggregated_values = federated_language.federated_aggregate(
         encoded_values, zero_fn(), accumulate_fn, merge_fn, report_fn
     )
 
-    decoded_values = intrinsics.federated_map(
+    decoded_values = federated_language.federated_map(
         decode_after_sum_fn, [aggregated_values.values, decode_after_sum_params]
     )
 
-    updated_state = intrinsics.federated_map(
+    updated_state = federated_language.federated_map(
         update_state_fn, [state, aggregated_values.state_update_tensors]
     )
 
-    empty_metrics = intrinsics.federated_value((), placements.SERVER)
+    empty_metrics = federated_language.federated_value(
+        (), federated_language.SERVER
+    )
     return measured_process.MeasuredProcessOutput(
         state=updated_state, result=decoded_values, measurements=empty_metrics
     )

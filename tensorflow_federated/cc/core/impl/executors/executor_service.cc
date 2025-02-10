@@ -18,7 +18,6 @@ limitations under the License
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -28,13 +27,14 @@ limitations under the License
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "include/grpcpp/server_context.h"
 #include "include/grpcpp/support/status.h"
+#include "federated_language/proto/computation.pb.h"
 #include "tensorflow_federated/cc/core/impl/executors/cardinalities.h"
 #include "tensorflow_federated/cc/core/impl/executors/executor.h"
 #include "tensorflow_federated/cc/core/impl/executors/status_conversion.h"
-#include "tensorflow_federated/proto/v0/computation.pb.h"
 #include "tensorflow_federated/proto/v0/executor.pb.h"
 
 namespace tensorflow_federated {
@@ -208,7 +208,7 @@ grpc::Status ExecutorService::GetExecutor(grpc::ServerContext* context,
 }
 
 grpc::Status ExecutorService::RequireExecutor(
-    std::string_view method_name, const v0::ExecutorId& executor,
+    absl::string_view method_name, const v0::ExecutorId& executor,
     std::shared_ptr<Executor>& executor_out) {
   absl::StatusOr<ExecutorEntry> ex =
       executor_resolver_.ExecutorForId({executor.id()});

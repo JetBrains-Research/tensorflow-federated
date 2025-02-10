@@ -18,20 +18,14 @@ import inspect
 import time
 
 from absl.testing import absltest
+import federated_language
 import numpy as np
 import tensorflow as tf
 
 from tensorflow_federated.python.core.backends.native import cpp_execution_contexts
 from tensorflow_federated.python.core.backends.native import execution_contexts
 from tensorflow_federated.python.core.environments.tensorflow_frontend import tensorflow_computation
-from tensorflow_federated.python.core.impl.context_stack import get_context_stack
-from tensorflow_federated.python.core.impl.execution_contexts import async_execution_context
-from tensorflow_federated.python.core.impl.execution_contexts import sync_execution_context
 from tensorflow_federated.python.core.impl.executors import executor_bindings
-from tensorflow_federated.python.core.impl.federated_context import federated_computation
-from tensorflow_federated.python.core.impl.federated_context import intrinsics
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
 
 
 def _assert_signature_equal(first_obj, second_obj):
@@ -61,7 +55,7 @@ class CreateAsyncLocalCPPExecutionContextTest(absltest.TestCase):
   def test_returns_async_context(self):
     context = cpp_execution_contexts.create_async_local_cpp_execution_context()
     self.assertIsInstance(
-        context, async_execution_context.AsyncExecutionContext
+        context, federated_language.framework.AsyncExecutionContext
     )
 
   def test_install_and_execute_in_context(self):
@@ -71,7 +65,7 @@ class CreateAsyncLocalCPPExecutionContextTest(absltest.TestCase):
     def add_one(x):
       return x + 1
 
-    with get_context_stack.get_context_stack().install(context):
+    with federated_language.framework.get_context_stack().install(context):
       val_coro = add_one(1)
       self.assertTrue(asyncio.iscoroutine(val_coro))
       self.assertEqual(asyncio.run(val_coro), 2)
@@ -79,13 +73,13 @@ class CreateAsyncLocalCPPExecutionContextTest(absltest.TestCase):
   def test_install_and_execute_computations_with_different_cardinalities(self):
     context = cpp_execution_contexts.create_async_local_cpp_execution_context()
 
-    @federated_computation.federated_computation(
-        computation_types.FederatedType(np.int32, placements.CLIENTS)
+    @federated_language.federated_computation(
+        federated_language.FederatedType(np.int32, federated_language.CLIENTS)
     )
     def repackage_arg(x):
       return [x, x]
 
-    with get_context_stack.get_context_stack().install(context):
+    with federated_language.framework.get_context_stack().install(context):
       single_val_coro = repackage_arg([1])
       second_val_coro = repackage_arg([1, 2])
       self.assertTrue(asyncio.iscoroutine(single_val_coro))
@@ -115,7 +109,9 @@ class CreateSyncLocalCPPExecutionContextTest(absltest.TestCase):
 
   def test_returns_sync_context(self):
     context = cpp_execution_contexts.create_sync_local_cpp_execution_context()
-    self.assertIsInstance(context, sync_execution_context.SyncExecutionContext)
+    self.assertIsInstance(
+        context, federated_language.framework.SyncExecutionContext
+    )
 
 
 class SetSyncLocalCPPExecutionContextTest(absltest.TestCase):
@@ -137,17 +133,20 @@ class LocalCPPExecutionContextTest(absltest.TestCase):
     context = cpp_execution_contexts.create_sync_remote_cpp_execution_context(
         channels=channels
     )
-    self.assertIsInstance(context, sync_execution_context.SyncExecutionContext)
+    self.assertIsInstance(
+        context, federated_language.framework.SyncExecutionContext
+    )
 
   def test_returns_same_python_structure(self):
-    @federated_computation.federated_computation(
+
+    @federated_language.federated_computation(
         collections.OrderedDict(a=np.int32, b=np.float32)
     )
     def identity(x):
       return x
 
     context = cpp_execution_contexts.create_sync_local_cpp_execution_context()
-    with get_context_stack.get_context_stack().install(context):
+    with federated_language.framework.get_context_stack().install(context):
       odict = identity(collections.OrderedDict(a=0, b=1.0))
 
     self.assertIsInstance(odict, collections.OrderedDict)
@@ -160,7 +159,7 @@ class LocalCPPExecutionContextTest(absltest.TestCase):
       return ordered_dict['x'] * ordered_dict['y']
 
     context = cpp_execution_contexts.create_sync_local_cpp_execution_context()
-    with get_context_stack.get_context_stack().install(context):
+    with federated_language.framework.get_context_stack().install(context):
       zero = multiply(collections.OrderedDict(x=0, y=1))
       one = multiply(collections.OrderedDict(x=1, y=1))
 
@@ -211,46 +210,43 @@ class LocalCPPExecutionContextTest(absltest.TestCase):
       # 1 * 1 * 10
       self.assertEqual(x, 10)
 
-  def test_returns_datasets(self):
+  def test_returns_sequence(self):
     @tensorflow_computation.tf_computation
-    def create_dataset():
+    def create_sequence():
       return tf.data.Dataset.range(5)
 
     context = cpp_execution_contexts.create_sync_local_cpp_execution_context()
-    with get_context_stack.get_context_stack().install(context):
+    with federated_language.framework.get_context_stack().install(context):
       with self.subTest('unplaced'):
-        dataset = create_dataset()
-        self.assertEqual(
-            dataset.element_spec, tf.TensorSpec(shape=[], dtype=np.int64)
-        )
-        self.assertEqual(dataset.cardinality(), 5)
+        sequence = create_sequence()
+        self.assertEqual(sequence, [0, 1, 2, 3, 4])
+
       with self.subTest('federated'):
 
-        @federated_computation.federated_computation
-        def create_federated_dataset():
-          return intrinsics.federated_eval(create_dataset, placements.SERVER)
+        @federated_language.federated_computation
+        def create_federated_sequence():
+          return federated_language.federated_eval(
+              create_sequence, federated_language.SERVER
+          )
 
-        dataset = create_federated_dataset()
-        self.assertEqual(
-            dataset.element_spec, tf.TensorSpec(shape=[], dtype=np.int64)
-        )
-        self.assertEqual(dataset.cardinality(), 5)
+        sequence = create_federated_sequence()
+        self.assertEqual(sequence, [0, 1, 2, 3, 4])
+
       with self.subTest('struct'):
 
         @tensorflow_computation.tf_computation()
-        def create_struct_of_datasets():
-          return (create_dataset(), create_dataset())
+        def create_struct_of_sequences():
+          return (create_sequence(), create_sequence())
 
-        datasets = create_struct_of_datasets()
-        self.assertLen(datasets, 2)
+        sequences = create_struct_of_sequences()
+        self.assertLen(sequences, 2)
         self.assertEqual(
-            [d.element_spec for d in datasets],
-            [
-                tf.TensorSpec(shape=[], dtype=np.int64),
-                tf.TensorSpec(shape=[], dtype=np.int64),
-            ],
+            sequences,
+            (
+                [0, 1, 2, 3, 4],
+                [0, 1, 2, 3, 4],
+            ),
         )
-        self.assertEqual([d.cardinality() for d in datasets], [5, 5])
 
 
 if __name__ == '__main__':

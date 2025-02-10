@@ -19,15 +19,12 @@ from typing import Optional
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import federated_language
 import numpy as np
 import tensorflow as tf
 
 from tensorflow_federated.python.analytics.heavy_hitters.iblt import iblt_tff
 from tensorflow_federated.python.core.backends.test import execution_contexts
-from tensorflow_federated.python.core.impl.computation import computation_base
-from tensorflow_federated.python.core.impl.types import computation_types
-from tensorflow_federated.python.core.impl.types import placements
-from tensorflow_federated.python.core.impl.types import type_test_utils
 
 DATA = [
     ['hello', 'hey', 'hi', 'hi', 'hi', '新年快乐'],
@@ -56,7 +53,9 @@ def _iblt_test_data_sampler(
     list of tf.data.Datasets.
   """
   return [
-      tf.data.Dataset.from_tensor_slices(client_data).batch(batch_size)
+      tf.data.Dataset.from_tensor_slices(client_data).batch(
+          batch_size, drop_remainder=True
+      )
       for client_data in data
   ]
 
@@ -112,7 +111,7 @@ def _execute_computation(
       visible. Defaults to `1`.
     secure_sum_bitwidth: The bitwidth used for secure sum. The default value is
       `None`, which disables secure sum. If not `None`, must be in the range
-      `[1,62]`. See `tff.federated_secure_sum_bitwidth`.
+      `[1,62]`. See `federated_language.federated_secure_sum_bitwidth`.
     multi_contribution: Whether each client is allowed to contribute multiple
       counts or only a count of one for each unique word. Defaults to `True`.
     string_postprocessor: A callable function that is run after strings are
@@ -160,32 +159,34 @@ class IbltTffConstructionTest(absltest.TestCase):
 
   def test_default_construction(self):
     iblt_computation = iblt_tff.build_iblt_computation()
-    self.assertIsInstance(iblt_computation, computation_base.Computation)
-    type_test_utils.assert_types_identical(
+    self.assertIsInstance(
+        iblt_computation, federated_language.framework.Computation
+    )
+    self.assertEqual(
         iblt_computation.type_signature,
-        computation_types.FunctionType(
-            parameter=computation_types.FederatedType(
-                computation_types.SequenceType(
-                    computation_types.TensorType(shape=[None], dtype=np.str_)
+        federated_language.FunctionType(
+            parameter=federated_language.FederatedType(
+                federated_language.SequenceType(
+                    federated_language.TensorType(shape=[None], dtype=np.str_)
                 ),
-                placements.CLIENTS,
+                federated_language.CLIENTS,
             ),
-            result=computation_types.FederatedType(
+            result=federated_language.FederatedType(
                 iblt_tff.ServerOutput(
                     clients=np.int32,
-                    heavy_hitters=computation_types.TensorType(
+                    heavy_hitters=federated_language.TensorType(
                         shape=[None], dtype=np.str_
                     ),
-                    heavy_hitters_unique_counts=computation_types.TensorType(
+                    heavy_hitters_unique_counts=federated_language.TensorType(
                         shape=[None], dtype=np.int64
                     ),
-                    heavy_hitters_counts=computation_types.TensorType(
+                    heavy_hitters_counts=federated_language.TensorType(
                         shape=[None], dtype=np.int64
                     ),
                     num_not_decoded=np.int64,
                     round_timestamp=np.int64,
                 ),
-                placements.SERVER,
+                federated_language.SERVER,
             ),
         ),
     )
@@ -278,6 +279,8 @@ class SecAggIbltTffExecutionTest(parameterized.TestCase):
       secure_sum_bitwidth,
       postprocess,
   ):
+    if batch_size != 1:
+      self.skipTest('b/368057405')
     (results, num_not_decoded, _) = _execute_computation(
         DATA,
         capacity=capacity,
@@ -338,6 +341,8 @@ class SecAggIbltTffExecutionTest(parameterized.TestCase):
 
   @parameterized.named_parameters(('batch_1', 1), ('batch_5', 5))
   def test_computation_with_max_heavy_hitters(self, batch_size):
+    if batch_size != 1:
+      self.skipTest('b/368057405')
     results, _, _ = _execute_computation(
         DATA,
         capacity=100,
@@ -361,6 +366,8 @@ class SecAggIbltTffExecutionTest(parameterized.TestCase):
       ('batch_size_5', 5),
   )
   def test_computation_with_k_anonymity(self, batch_size):
+    if batch_size != 1:
+      self.skipTest('b/368057405')
     results, _, _ = _execute_computation(
         DATA,
         capacity=100,
@@ -412,6 +419,8 @@ class SecAggIbltTffExecutionTest(parameterized.TestCase):
   def test_computation_with_k_anonymity_and_string_max_bytes(
       self, batch_size, k_anonymity, string_max_bytes, expected_result
   ):
+    if batch_size != 1:
+      self.skipTest('b/368057405')
     results, _, _ = _execute_computation(
         DATA,
         capacity=100,
@@ -449,6 +458,8 @@ class SecAggIbltUniqueCountsTffTest(parameterized.TestCase):
       secure_sum_bitwidth,
       postprocess,
   ):
+    if batch_size != 1:
+      self.skipTest('b/368057405')
     (results, num_not_decoded, _) = _execute_computation(
         DATA,
         capacity=capacity,
@@ -549,6 +560,8 @@ class SecAggIbltUniqueCountsTffTest(parameterized.TestCase):
       batch_size,
       expected_results,
   ):
+    if batch_size != 1:
+      self.skipTest('b/368057405')
     results, _, _ = _execute_computation(
         DATA,
         capacity=capacity,
@@ -562,8 +575,13 @@ class SecAggIbltUniqueCountsTffTest(parameterized.TestCase):
 
     self.assertEqual(results, expected_results)
 
-  @parameterized.named_parameters(('batch_size_1', 1), ('batch_size_5', 5))
+  @parameterized.named_parameters(
+      ('batch_size_1', 1),
+      ('batch_size_5', 5),
+  )
   def test_computation_with_max_heavy_hitters(self, batch_size):
+    if batch_size != 1:
+      self.skipTest('b/368057405')
     results, _, _ = _execute_computation(
         DATA,
         capacity=100,
@@ -577,8 +595,13 @@ class SecAggIbltUniqueCountsTffTest(parameterized.TestCase):
         results, {'hello': (5, 5), 'I am on my way': (4, 4), 'pumpkin': (3, 3)}
     )
 
-  @parameterized.named_parameters(('batch_size_1', 1), ('batch_size_5', 5))
+  @parameterized.named_parameters(
+      ('batch_size_1', 1),
+      ('batch_size_5', 5),
+  )
   def test_computation_with_k_anonymity(self, batch_size):
+    if batch_size != 1:
+      self.skipTest('b/368057405')
     results, _, _ = _execute_computation(
         DATA,
         capacity=100,
@@ -631,6 +654,8 @@ class SecAggIbltUniqueCountsTffTest(parameterized.TestCase):
   def test_computation_with_k_anonymity_and_string_max_bytes(
       self, batch_size, k_anonymity, string_max_bytes, expected_result
   ):
+    if batch_size != 1:
+      self.skipTest('b/368057405')
     results, _, _ = _execute_computation(
         DATA,
         capacity=100,

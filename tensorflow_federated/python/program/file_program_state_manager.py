@@ -26,23 +26,19 @@ import os.path
 from typing import Optional, Union
 
 from absl import logging
-import numpy as np
+import federated_language
 import tensorflow as tf
 
-from tensorflow_federated.python.common_libs import py_typecheck
-from tensorflow_federated.python.common_libs import serializable
 from tensorflow_federated.python.program import file_utils
-from tensorflow_federated.python.program import program_state_manager
 from tensorflow_federated.python.program import structure_utils
-from tensorflow_federated.python.program import value_reference
 
 
 class FileProgramStateManager(
-    program_state_manager.ProgramStateManager[
-        program_state_manager.ProgramStateStructure
+    federated_language.program.ProgramStateManager[
+        federated_language.program.ProgramStateStructure
     ]
 ):
-  """A `tff.program.ProgramStateManager` that is backed by a file system.
+  """A `federated_language.program.ProgramStateManager` that is backed by a file system.
 
   A `tff.program.FileProgramStateManager` is a utility for saving and loading
   program state to a file system in a federated program and is used to implement
@@ -51,7 +47,8 @@ class FileProgramStateManager(
 
   Program state is saved to the file system using the SavedModel (see
   `tf.saved_model`) format. When the program state is saved, each
-  `tff.program.MaterializableValueReference` is materialized and each
+  `federated_language.program.MaterializableValueReference` is materialized and
+  each
   `tff.Serializable` is serialized. The structure of the program state is
   discarded, but is required to load the program state.
 
@@ -69,15 +66,18 @@ class FileProgramStateManager(
       prefix: str = 'program_state_',
       keep_total: int = 5,
       keep_first: bool = True,
+      keep_every_k: int = 1,
   ):
-    """Returns an initialized `tff.program.ProgramStateManager`.
+    """Returns an initialized `federated_language.program.ProgramStateManager`.
 
     Args:
       root_dir: A path on the file system to save program state. If this path
         does not exist it will be created.
       prefix: A string to use as the prefix for filenames.
       keep_total: An integer representing the total number of program states to
-        keep. If the value is zero or smaller, all program states will be kept.
+        keep. If the value is zero or smaller, there will be no limitation on
+        how many program states to keep; if keep_every_k is 1, then all states
+        will be kept.
       keep_first: A boolean indicating if the first program state should be
         kept, irrespective of whether it is the oldest program state or not.
         This is desirable in settings where you would like to ensure full
@@ -85,16 +85,16 @@ class FileProgramStateManager(
         weights or optimizer states are initialized randomly. By loading from
         the initial program state, one can avoid re-initializing and obtaining
         different results.
+      keep_every_k: An integer representing how often program states should be
+        kept. The latest version will always be kept. Defaults to 1. Even when
+        keep_total is zero or negative, this setting will still be applied. To
+        keep all states, set this to 1.
 
     Raises:
       ValueError: If `root_dir` is an empty string.
     """
-    py_typecheck.check_type(root_dir, (str, os.PathLike))
     if not root_dir:
       raise ValueError('Expected `root_dir` to not be an empty string.')
-    py_typecheck.check_type(prefix, str)
-    py_typecheck.check_type(keep_total, int)
-    py_typecheck.check_type(keep_first, bool)
 
     if not tf.io.gfile.exists(root_dir):
       tf.io.gfile.makedirs(root_dir)
@@ -102,6 +102,7 @@ class FileProgramStateManager(
     self._prefix = prefix
     self._keep_total = keep_total
     self._keep_first = keep_first
+    self._keep_every_k = keep_every_k
 
   async def get_versions(self) -> Optional[list[int]]:
     """Returns a list of saved versions or `None`.
@@ -135,8 +136,6 @@ class FileProgramStateManager(
     Args:
       path: The path to extract the version from.
     """
-    py_typecheck.check_type(path, (str, os.PathLike))
-
     basename = os.path.basename(path)
     if basename.startswith(self._prefix):
       version = basename[len(self._prefix) :]
@@ -156,14 +155,14 @@ class FileProgramStateManager(
     Args:
       version: The version used to construct the path.
     """
-    py_typecheck.check_type(version, (int, np.integer))
-
     basename = f'{self._prefix}{version}'
     return os.path.join(self._root_dir, basename)
 
   async def load(
-      self, version: int, structure: program_state_manager.ProgramStateStructure
-  ) -> program_state_manager.ProgramStateStructure:
+      self,
+      version: int,
+      structure: federated_language.program.ProgramStateStructure,
+  ) -> federated_language.program.ProgramStateStructure:
     """Returns the program state for the given `version`.
 
     Args:
@@ -176,16 +175,14 @@ class FileProgramStateManager(
       ProgramStateNotFoundError: If there is no program state for the given
         `version`.
     """
-    py_typecheck.check_type(version, int)
-
     path = self._get_path_for_version(version)
     if not await file_utils.exists(path):
-      raise program_state_manager.ProgramStateNotFoundError(version)
+      raise federated_language.program.ProgramStateNotFoundError(version)
     program_state = await file_utils.read_saved_model(path)
 
     def _normalize(
-        value: program_state_manager.ProgramStateValue,
-    ) -> program_state_manager.ProgramStateValue:
+        value: federated_language.program.ProgramStateValue,
+    ) -> federated_language.program.ProgramStateValue:
       """Returns a normalized value.
 
       The `tff.program.FileProgramStateManager` saves and loads program state to
@@ -205,13 +202,16 @@ class FileProgramStateManager(
     normalized_state = structure_utils.map_structure(_normalize, program_state)
 
     def _deserialize_as(structure, value):
-      if isinstance(structure, serializable.Serializable):
+      if isinstance(structure, federated_language.Serializable):
         serializable_cls = type(structure)
         value = serializable_cls.from_bytes(value)
       return value
 
-    deserialized_state = structure_utils.map_structure(
-        _deserialize_as, structure, normalized_state
+    # Note: `map_structure_up_to` is used because `structure` may be shallower
+    # than `normalized_state`. For example, a `MaterializableValueReference` may
+    # reference a sequence of data.
+    deserialized_state = structure_utils.map_structure_up_to(
+        structure, _deserialize_as, structure, normalized_state
     )
 
     logging.info('Program state loaded: %s', path)
@@ -219,8 +219,6 @@ class FileProgramStateManager(
 
   async def _remove(self, version: int) -> None:
     """Removes program state for the given `version`."""
-    py_typecheck.check_type(version, (int, np.integer))
-
     path = self._get_path_for_version(version)
     if await file_utils.exists(path):
       await file_utils.rmtree(path)
@@ -228,13 +226,27 @@ class FileProgramStateManager(
 
   async def _remove_old_program_state(self) -> None:
     """Removes old program state."""
-    if self._keep_total <= 0:
+    if self._keep_every_k == 1 and self._keep_total <= 0:
       return
     versions = await self.get_versions()
-    if versions is not None and len(versions) > self._keep_total:
-      start = 1 if self._keep_first else 0
-      stop = len(versions) - (self._keep_total - start)
-      await asyncio.gather(*[self._remove(v) for v in versions[start:stop]])
+    if versions is not None:
+      versions_to_keep = []
+      index = 0
+      while index < len(versions):
+        if (
+            versions[index] % self._keep_every_k == 0
+            or index == len(versions) - 1
+            or (self._keep_first and index == 0)
+        ):
+          versions_to_keep.append(versions[index])
+        index += 1
+      if self._keep_total > 0 and len(versions_to_keep) > self._keep_total:
+        start = 1 if self._keep_first else 0
+        stop = len(versions_to_keep) - (self._keep_total - start)
+        del versions_to_keep[start:stop]
+      await asyncio.gather(
+          *[self._remove(v) for v in versions if v not in versions_to_keep]
+      )
 
   async def remove_all(self) -> None:
     """Removes all program states."""
@@ -244,13 +256,14 @@ class FileProgramStateManager(
 
   async def save(
       self,
-      program_state: program_state_manager.ProgramStateStructure,
+      program_state: federated_language.program.ProgramStateStructure,
       version: int,
   ) -> None:
     """Saves `program_state` for the given `version`.
 
     Args:
-      program_state: A `tff.program.ProgramStateStructure` to save.
+      program_state: A `federated_language.program.ProgramStateStructure` to
+        save.
       version: A strictly increasing integer representing the version of a saved
         `program_state`.
 
@@ -258,17 +271,17 @@ class FileProgramStateManager(
       ProgramStateExistsError: If there is already program state for the given
         `version`.
     """
-    py_typecheck.check_type(version, (int, np.integer))
-
     path = self._get_path_for_version(version)
     if await file_utils.exists(path):
-      raise program_state_manager.ProgramStateExistsError(
+      raise federated_language.program.ProgramStateExistsError(
           version=version, path=self._root_dir
       )
-    materialized_state = await value_reference.materialize_value(program_state)
+    materialized_state = await federated_language.program.materialize_value(
+        program_state
+    )
 
     def _serialize(value):
-      if isinstance(value, serializable.Serializable):
+      if isinstance(value, federated_language.Serializable):
         value = value.to_bytes()
       return value
 

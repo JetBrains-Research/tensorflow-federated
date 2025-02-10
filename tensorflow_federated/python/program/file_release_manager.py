@@ -30,14 +30,12 @@ import os.path
 import random
 from typing import Union
 
+import federated_language
 import numpy as np
 import tensorflow as tf
 
-from tensorflow_federated.python.common_libs import py_typecheck
 from tensorflow_federated.python.program import file_utils
-from tensorflow_federated.python.program import release_manager
 from tensorflow_federated.python.program import structure_utils
-from tensorflow_federated.python.program import value_reference
 
 
 class CSVKeyFieldnameNotFoundError(Exception):
@@ -63,9 +61,11 @@ class CSVSaveMode(enum.Enum):
 
 
 class CSVFileReleaseManager(
-    release_manager.ReleaseManager[release_manager.ReleasableStructure, int]
+    federated_language.program.ReleaseManager[
+        federated_language.program.ReleasableStructure, int
+    ]
 ):
-  """A `tff.program.ReleaseManager` that releases values to a CSV file.
+  """A `federated_language.program.ReleaseManager` that releases values to a CSV file.
 
   A `tff.program.CSVFileReleaseManager` is a utility for releasing values
   from a federated program to a CSV file and is used to release values from
@@ -73,7 +73,9 @@ class CSVFileReleaseManager(
 
   Values are released to the file system as a CSV file and are quoted as
   strings. When the value is released, each
-  `tff.program.MaterializableValueReference` is materialized. The value is then
+  `federated_language.program.MaterializableValueReference` is materialized. The
+  value
+  is then
   flattened, converted to a `numpy.ndarray`, and then converted to a nested list
   of Python scalars, and released as a CSV file. For example, `1` will be
   written as `'1'` and `tf.constant([[1, 1], [1, 1]])` will be written as
@@ -118,11 +120,8 @@ class CSVFileReleaseManager(
       CSVKeyFieldnameNotFoundError: If the file exists but does not contain a
         fieldname of `key_fieldname`.
     """
-    py_typecheck.check_type(file_path, (bytes, str, os.PathLike))
     if not file_path:
       raise ValueError('Expected `file_path` to not be an empty string.')
-    py_typecheck.check_type(save_mode, CSVSaveMode)
-    py_typecheck.check_type(key_fieldname, str)
     if not key_fieldname:
       raise ValueError('Expected `key_fieldname` to not be an empty string.')
 
@@ -159,22 +158,11 @@ class CSVFileReleaseManager(
   def _write_values(
       self,
       fieldnames: Sequence[str],
-      values: Iterable[Mapping[str, release_manager.ReleasableStructure]],
+      values: Iterable[
+          Mapping[str, federated_language.program.ReleasableStructure]
+      ],
   ) -> None:
     """Writes `fieldnames` and `values` to the managed CSV."""
-    py_typecheck.check_type(fieldnames, Sequence)
-    if isinstance(fieldnames, str):
-      raise TypeError(
-          'Expected `fieldnames` to be a `Sequence` of `str`, found `str`.'
-      )
-    for fieldname in fieldnames:
-      py_typecheck.check_type(fieldname, str)
-    py_typecheck.check_type(values, Iterable)
-    for value in values:
-      py_typecheck.check_type(value, Mapping)
-      for key in value.keys():
-        py_typecheck.check_type(key, str)
-
     path = os.fspath(self._file_path)
 
     # Create a temporary file.
@@ -192,13 +180,9 @@ class CSVFileReleaseManager(
     tf.io.gfile.rename(temp_path, self._file_path, overwrite=True)
 
   async def _write_value(
-      self, value: Mapping[str, release_manager.ReleasableStructure]
+      self, value: Mapping[str, federated_language.program.ReleasableStructure]
   ) -> None:
     """Writes `value` to the managed CSV."""
-    py_typecheck.check_type(value, Mapping)
-    for key in value.keys():
-      py_typecheck.check_type(key, str)
-
     loop = asyncio.get_running_loop()
     fieldnames, values = await loop.run_in_executor(None, self._read_values)
     fieldnames.extend([x for x in value.keys() if x not in fieldnames])
@@ -206,12 +190,9 @@ class CSVFileReleaseManager(
     await loop.run_in_executor(None, self._write_values, fieldnames, values)
 
   async def _append_value(
-      self, value: Mapping[str, release_manager.ReleasableStructure]
+      self, value: Mapping[str, federated_language.program.ReleasableStructure]
   ) -> None:
     """Appends `value` to the managed CSV."""
-    py_typecheck.check_type(value, Mapping)
-    for key in value.keys():
-      py_typecheck.check_type(key, str)
 
     def _read_fieldnames_only() -> list[str]:
       with tf.io.gfile.GFile(self._file_path, 'r') as file:
@@ -224,7 +205,7 @@ class CSVFileReleaseManager(
 
     def _append_value(
         fieldnames: Sequence[str],
-        value: Mapping[str, release_manager.ReleasableStructure],
+        value: Mapping[str, federated_language.program.ReleasableStructure],
     ) -> None:
       try:
         with tf.io.gfile.GFile(self._file_path, 'a') as file:
@@ -247,8 +228,6 @@ class CSVFileReleaseManager(
 
   async def _remove_values_greater_than_key(self, key: int) -> None:
     """Removes all values greater than `key` from the managed CSV."""
-    py_typecheck.check_type(key, (int, np.integer))
-
     if self._latest_key is None or key > self._latest_key:
       return
 
@@ -275,7 +254,7 @@ class CSVFileReleaseManager(
       self._latest_key = key
 
   async def release(
-      self, value: release_manager.ReleasableStructure, key: int
+      self, value: federated_language.program.ReleasableStructure, key: int
   ) -> None:
     """Releases `value` from a federated program.
 
@@ -284,22 +263,20 @@ class CSVFileReleaseManager(
     writing `value`.
 
     Args:
-      value: A `tff.program.ReleasableStructure` to release.
+      value: A `federated_language.program.ReleasableStructure` to release.
       key: An integer used to reference the released `value`; `key` represents a
         step in a federated program.
     """
-    py_typecheck.check_type(key, (int, np.integer))
-
     _, materialized_value = await asyncio.gather(
         self._remove_values_greater_than_key(key - 1),
-        value_reference.materialize_value(value),
+        federated_language.program.materialize_value(value),
     )
 
     flattened_value = structure_utils.flatten_with_name(materialized_value)
 
     def _normalize(
-        value: value_reference.MaterializedValue,
-    ) -> value_reference.MaterializedValue:
+        value: federated_language.program.MaterializedValue,
+    ) -> federated_language.program.MaterializedValue:
       if isinstance(value, tf.data.Dataset):
         value = list(value)
       return np.array(value).tolist()
@@ -315,11 +292,12 @@ class CSVFileReleaseManager(
 
 
 class SavedModelFileReleaseManager(
-    release_manager.ReleaseManager[
-        release_manager.ReleasableStructure, release_manager.Key
+    federated_language.program.ReleaseManager[
+        federated_language.program.ReleasableStructure,
+        federated_language.program.Key,
     ]
 ):
-  """A `tff.program.ReleaseManager` that releases values to a file system.
+  """A `federated_language.program.ReleaseManager` that releases values to a file system.
 
   A `tff.program.SavedModelFileReleaseManager` is a utility for releasing values
   from a federated program to a file system and is used to release values from
@@ -327,7 +305,8 @@ class SavedModelFileReleaseManager(
 
   Values are released to the file system using the SavedModel (see
   `tf.saved_model`) format. When the value is released, each
-  `tff.program.MaterializableValueReference` is materialized. The structure of
+  `federated_language.program.MaterializableValueReference` is materialized. The
+  structure of
   the value is discarded.
 
   Note: The SavedModel format can only contain values that can be converted to a
@@ -351,17 +330,15 @@ class SavedModelFileReleaseManager(
     Raises:
       ValueError: If `root_dir` is an empty string.
     """
-    py_typecheck.check_type(root_dir, (str, os.PathLike))
     if not root_dir:
       raise ValueError('Expected `root_dir` to not be an empty string.')
-    py_typecheck.check_type(prefix, str)
 
     if not tf.io.gfile.exists(root_dir):
       tf.io.gfile.makedirs(root_dir)
     self._root_dir = root_dir
     self._prefix = prefix
 
-  def _get_path_for_key(self, key: release_manager.Key) -> str:
+  def _get_path_for_key(self, key: federated_language.program.Key) -> str:
     """Returns the path for the given `key`.
 
     This method does not assert that the given `key` or the returned path
@@ -374,30 +351,34 @@ class SavedModelFileReleaseManager(
     return os.path.join(self._root_dir, basename)
 
   async def release(
-      self, value: release_manager.ReleasableStructure, key: release_manager.Key
+      self,
+      value: federated_language.program.ReleasableStructure,
+      key: federated_language.program.Key,
   ) -> None:
     """Releases `value` from a federated program.
 
     Args:
-      value: A `tff.program.ReleasableStructure` to release.
+      value: A `federated_language.program.ReleasableStructure` to release.
       key: Used to reference (in the file system) the released `value`.
     """
     path = self._get_path_for_key(key)
-    materialized_value = await value_reference.materialize_value(value)
+    materialized_value = await federated_language.program.materialize_value(
+        value
+    )
     await file_utils.write_saved_model(materialized_value, path, overwrite=True)
 
   async def get_value(
       self,
-      key: release_manager.Key,
-      structure: release_manager.ReleasableStructure,
-  ) -> release_manager.ReleasableStructure:
+      key: federated_language.program.Key,
+  ) -> federated_language.program.ReleasableStructure:
     """Returns the value for the given `key`.
+
+    The SavedModel format flattens and deterministicly orders keys. This
+    ordering can not be reversed because `get_value` does not accept the
+    original structure.
 
     Args:
       key: Used to reference the released `value`.
-      structure: The structure of the saved program state for the given `key`
-        used to support serialization and deserialization of user-defined
-        classes in the structure.
 
     Returns:
       A retrieved value matching `structure`.
@@ -406,16 +387,15 @@ class SavedModelFileReleaseManager(
       ReleasedValueNotFoundError: If there is no released value for the given
         `key`.
     """
-    del structure  # Unused.
 
     path = self._get_path_for_key(key)
     if not await file_utils.exists(path):
-      raise release_manager.ReleasedValueNotFoundError(key)
+      raise federated_language.program.ReleasedValueNotFoundError(key)
     value = await file_utils.read_saved_model(path)
 
     def _normalize(
-        value: release_manager.ReleasableValue,
-    ) -> release_manager.ReleasableValue:
+        value: federated_language.program.ReleasableValue,
+    ) -> federated_language.program.ReleasableValue:
       """Returns a normalized value.
 
       The `tff.program.SavedModelFileReleaseManager` releases and gets values
