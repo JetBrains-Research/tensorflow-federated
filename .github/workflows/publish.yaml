@@ -40,7 +40,7 @@ jobs:
     if: |
       github.repository == 'google-parfait/tensorflow-federated'
       && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write  # Required to create a release.
@@ -100,9 +100,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             arch: x86_64
-          - os: ubuntu-22.04-arm
+          - os: ubuntu-24.04-arm
             arch: aarch64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
@@ -166,9 +166,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             arch: x86_64
-          - os: ubuntu-22.04-arm
+          - os: ubuntu-24.04-arm
             arch: aarch64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
@@ -197,7 +197,6 @@ jobs:
 
     - name: Test Python package
       run: |
-        ls "${{ github.workspace }}/dist/"*".whl"
         package="$(ls "${{ github.workspace }}/dist/"*".whl" | head -n1)"
         actual_size="$(du -b "${package}" | cut -f1)"
         maximum_size=80000000  # 80 MiB
@@ -211,7 +210,7 @@ jobs:
   publish-package:
     name: Publish Package
     needs: [build-package, test-package]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       id-token: write  # Required for trusted publishing.
