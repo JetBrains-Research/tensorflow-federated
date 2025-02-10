@@ -37,9 +37,9 @@ jobs:
     # Only if:
     # * Repository is not a fork.
     # * Branch is `main` (for workflow_dispatch trigger).
-    if: |
-      github.repository == 'google-parfait/tensorflow-federated'
-      && github.ref == 'refs/heads/main'
+#    if: |
+#      github.repository == 'google-parfait/tensorflow-federated'
+#      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:
@@ -82,7 +82,7 @@ jobs:
         } >> "$GITHUB_ENV"
 
     - name: Publish release
-      if: ${{ env.latest_version!= env.version }}
+      if: ${{ env.latest_version != env.version }}
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -194,7 +194,6 @@ jobs:
 
     - name: Test Python package
       run: |
-        ls "${{ github.workspace }}/dist/"*".whl"
         package="$(ls "${{ github.workspace }}/dist/"*".whl" | head -n1)"
         actual_size="$(du -b "${package}" | cut -f1)"
         maximum_size=80000000  # 80 MiB

@@ -16,8 +16,6 @@
 # Tool to build the TensorFlow Federated Python package.
 set -e
 
-echo "Current working directory: - $(pwd)"
-
 usage() {
   local script_name=$(basename "${0}")
   echo "usage: ${script_name} --output_dir=<path>"
@@ -26,9 +24,8 @@ usage() {
 }
 
 main() {
+  # Parse the arguments.
   local output_dir="${BUILD_WORKING_DIRECTORY}/dist"
-
-  pwd
 
   while [[ "$#" -gt 0 ]]; do
     option="$1"
@@ -50,14 +47,6 @@ main() {
     usage
     exit 1
   fi
-
-  # Check the GLIBC version.
-#  local expected_glibc="2.31"
-#  if ! ldd --version | grep --quiet "${expected_glibc}"; then
-#    echo "error: expected GLIBC version to be '${expected_glibc}', found:" 1>&2
-#    ldd --version 1>&2
-#    exit 1
-#  fi
 
   # Check the GLIBC version.
   glibc_version=$(ldd --version 2>&1 | grep "GLIBC" | awk '{print $NF}')
