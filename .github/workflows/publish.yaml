@@ -19,7 +19,7 @@ on:  # yamllint disable-line rule:truthy
   # postsubmit
   push:
     branches:
-    - arm-build
+    - main
     paths:
     - 'tensorflow_federated/version.py'
 
@@ -38,8 +38,8 @@ jobs:
     # * Repository is not a fork.
     # * Branch is `main` (for workflow_dispatch trigger).
     if: |
-      github.repository == 'JetBrains-Research/tensorflow-federated'
-      && github.ref == 'refs/heads/arm-build'
+      github.repository == 'google-parfait/tensorflow-federated'
+      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:
