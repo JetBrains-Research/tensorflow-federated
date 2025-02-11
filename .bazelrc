@@ -41,9 +41,8 @@ build:linux_x86_64 --copt=-march=haswell
 build:linux_x86_64 --host_copt=-march=haswell
 
 # Configuration for Linux on ARM64 (aarch64)
-# Add any specific flags for ARM64 if needed
-build:linux_aarch64 --copt=-march=armv8.5-a
-build:linux_aarch64 --host_copt=-march=armv8.5-a
+build:linux_aarch64 --copt=-march=armv8-a
+build:linux_aarch64 --host_copt=-march=armv8-a
 
 # Only use level three optimizations for target, not necessarily for host
 # since host artifacts don't need to be fast.
