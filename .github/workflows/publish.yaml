@@ -135,6 +135,11 @@ jobs:
       run: |
         pip install --upgrade "pip"
 
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@v2
+      with:
+        version: "14.0"
+
     - name: Build Python package
       run: |
         pip install --upgrade "numpy~=1.25"
