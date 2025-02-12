@@ -101,6 +101,8 @@ jobs:
             arch: x86_64
           - os: ubuntu-22.04-arm
             arch: aarch64
+          - os: macos-latest
+            arch: macos_arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     environment: release
@@ -167,6 +169,8 @@ jobs:
             arch: x86_64
           - os: ubuntu-22.04-arm
             arch: aarch64
+          - os: macos-latest
+            arch: macos_arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
