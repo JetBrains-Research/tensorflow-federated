@@ -54,8 +54,8 @@ build:macos_arm64 --host_copt=-march=armv8.4-a
 build --copt=-O3
 
 # Suppress C++ compiler warnings.
-build:linux --copt=-w
-build:linux --host_copt=-w
+build --copt=-w
+build --host_copt=-w
 
 #
 # Remote execution capabilities
@@ -128,7 +128,7 @@ build --host_cxxopt=-std=c++17
 
 # Do not risk cache corruption. See:
 # https://github.com/bazelbuild/bazel/issues/3360
-build:linux --experimental_guard_against_concurrent_changes
+build --experimental_guard_against_concurrent_changes
 
 # Configure short or long logs
 build:short_logs --output_filter=DONT_MATCH_ANYTHING
