@@ -99,13 +99,13 @@ jobs:
         include:
           - os: ubuntu-22.04
             arch: x86_64
-            sys: linux_
+            sys: linux
           - os: ubuntu-22.04-arm
             arch: aarch64
-            sys: linux_
+            sys: linux
           - os: macos-latest
-            arch: macos_arm64
-            sys: null
+            arch: arm64
+            sys: macos
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     environment: release
@@ -152,7 +152,7 @@ jobs:
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
             --remote_cache="https://storage.googleapis.com/${{ vars.BAZEL_CACHE_BUCKET }}/${{ github.job }}" \
-            --config="${{ matrix.sys }}${{ matrix.arch }}" \
+            --config="${{ matrix.sys }}_${{ matrix.arch }}" \
             -- \
             --output_dir="${{ github.workspace }}/dist/"
 
