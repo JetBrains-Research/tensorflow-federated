@@ -147,6 +147,8 @@ jobs:
 
     - name: Build Python package
       run: |
+        pwd
+        cat .bazelrc
         pip install --upgrade "numpy~=1.25"
         bazelisk run //tools/python_package:build_python_package \
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
