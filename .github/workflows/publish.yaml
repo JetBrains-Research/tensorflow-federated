@@ -99,12 +99,19 @@ jobs:
         include:
           - os: ubuntu-22.04
             arch: x86_64
+            sys: linux
           - os: ubuntu-22.04-arm
             arch: aarch64
+            sys: linux
+          - os: macos-14
+            arch: arm64
+            sys: macos
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     environment: release
     steps:
+
+
 
     - name: Checkout repository
       uses: actions/checkout@v4.1.7
@@ -147,26 +154,126 @@ jobs:
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
             --remote_cache="https://storage.googleapis.com/${{ vars.BAZEL_CACHE_BUCKET }}/${{ github.job }}" \
-            --config="linux_${{ matrix.arch }}" \
+            --config="${{ matrix.sys }}_${{ matrix.arch }}" \
             -- \
             --output_dir="${{ github.workspace }}/dist/"
 
     - name: Upload Python package
       uses: actions/upload-artifact@v4.3.3
       with:
-        name: python-package-distributions-${{ matrix.arch }}
+        name: python-package-distributions-${{ matrix.sys }}-${{ matrix.arch }}
+        path: dist/*.whl
+
+  build-package-manylinux-containers:
+    name: Build Package Manylinux Containers
+    needs: [publish-release]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            image: quay.io/pypa/manylinux_2_28_x86_64
+            arch: x86_64
+            sys: linux
+    runs-on: ${{ matrix.os }}
+    container:
+      image: ${{ matrix.image }}
+
+    timeout-minutes: 360
+    environment: release
+    steps:
+
+
+
+    - name: Checkout repository
+      uses: actions/checkout@v4.1.7
+      with:
+        ref: ${{ needs.publish-release.outputs.release-tag }}
+
+    - name: Authenticate to Google Cloud
+      id: auth
+      uses: google-github-actions/auth@v2.1.3
+      with:
+        credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
+        create_credentials_file: true
+
+    - name: Set up bazel repository cache
+      uses: actions/cache@v4.2.0
+      with:
+        path: "~/.cache/bazel/"
+        key: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE') }}
+        restore-keys: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel
+
+
+
+
+
+
+#         curl "https://bootstrap.pypa.io/get-pip.py" -o "get-pip.py"
+#         python3 get-pip.py
+
+
+
+
+#    - name: Set up python
+#      uses: actions/setup-python@v5.1.0
+#      with:
+#        python-version: "3.11"
+#        cache: "pip"
+
+
+
+#    - name: Install Python dependencies
+#      run: |
+#        pip install --upgrade "pip"
+
+    - name: Install LLVM and Clang
+      uses: KyleMayes/install-llvm-action@v2
+      with:
+        version: "14.0"
+
+    - name: Set up Pip
+      run: |
+        python3 -m ensurepip
+        python3 -m pip install --upgrade "pip"
+        curl -Lo /usr/local/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.12.0/bazelisk-linux-amd64
+        chmod +x /usr/local/bin/bazelisk
+        bazelisk --version
+        bash
+        clang -v
+
+##        python3 -m pip install --upgrade "numpy~=1.25"    did not work
+    - name: Build Python package
+      run: | 
+        python3 -m pip install --upgrade "numpy~=1.25"         
+        bazelisk run //tools/python_package:build_python_package \
+            --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
+            --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
+            --remote_cache="https://storage.googleapis.com/${{ vars.BAZEL_CACHE_BUCKET }}/${{ github.job }}" \
+            --config="${{ matrix.sys }}_${{ matrix.arch }}" \
+            -- \
+            --output_dir="${{ github.workspace }}/dist/"
+
+    - name: Upload Python package
+      uses: actions/upload-artifact@v4.3.3
+      with:
+        name: python-package-distributions-${{ matrix.sys }}-${{ matrix.arch }}
         path: dist/*.whl
 
   test-package:
     name: Test Package
-    needs: [build-package]
+    needs: [build-package,build-package-manylinux-containers]
     strategy:
       matrix:
         include:
           - os: ubuntu-22.04
             arch: x86_64
+            sys: linux
           - os: ubuntu-22.04-arm
             arch: aarch64
+            sys: linux
+          - os: macos-14
+            arch: arm64
+            sys: macos
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
@@ -179,7 +286,7 @@ jobs:
     - name: Download Python package
       uses: actions/download-artifact@v4.1.7
       with:
-        name: python-package-distributions-${{ matrix.arch }}
+        name: python-package-distributions-${{ matrix.sys }}-${{ matrix.arch }}
         path: dist/
 
     - name: Set up Python
@@ -207,7 +314,7 @@ jobs:
 
   publish-package:
     name: Publish Package
-    needs: [build-package, test-package]
+    needs: [build-package,build-package-manylinux-containers, test-package]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:

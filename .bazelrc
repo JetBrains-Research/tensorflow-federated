@@ -44,10 +44,10 @@ build:linux_x86_64 --host_copt=-march=haswell
 build:linux_aarch64 --copt=-march=armv8-a
 build:linux_aarch64 --host_copt=-march=armv8-a
 
-# Configure for Linux on ARM^$ (Apple Silicon)
+# Configure for Linux on ARM64 (Apple Silicon)
 build:macos --macos_minimum_os=12.0
-build:macos_arm64 --copt=-march=armv8.4-a
-build:macos_arm64 --host_copt=-march=armv8.4-a
+build:macos_arm64 --copt=-mcpu=apple-m1
+build:macos_arm64 --host_copt=-mcpu=apple-m1
 
 # Only use level three optimizations for target, not necessarily for host
 # since host artifacts don't need to be fast.

@@ -14,6 +14,8 @@
 # limitations under the License.
 #
 # Tool to build the TensorFlow Federated Python package.
+
+
 set -e
 
 usage() {
@@ -24,8 +26,13 @@ usage() {
 }
 
 main() {
+  plat_name = toml get --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" 
+  trap "toml set --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" "$plat_name"" EXIT
+
+
   # Parse the arguments.
   local output_dir="${BUILD_WORKING_DIRECTORY}/dist"
+  
 
   while [[ "$#" -gt 0 ]]; do
     option="$1"
@@ -48,35 +55,44 @@ main() {
     exit 1
   fi
 
-#  # Check the GLIBC version.
-#  glibc_version=$(ldd --version 2>&1 | grep "GLIBC" | awk '{print $NF}')
-#
-#  # Error handling if GLIBC version couldn't be determined.
-#  if [[ -z "$glibc_version" ]]; then
-#    echo "error: Could not determine GLIBC version." 1>&2
-#    exit 1
-#  fi
-#
-#  echo "Detected GLIBC version: $glibc_version"
-#
-#  # Extract major and minor version numbers for manylinux tag.
-#  IFS='.' read -r glibc_major glibc_minor <<< "$glibc_version"
-#  manylinux_version="${glibc_major}_${glibc_minor}"
-#
-#  # Detect architecture.
-#  arch=$(uname -m)
-#  case "$arch" in
-#    aarch64|x86_64) ;; # Supported architectures
-#    *) echo "error: Unsupported architecture: $arch" >&2; exit 1 ;;
-#  esac
-#
-#  plat_name="manylinux_${manylinux_version}_${arch}"
+
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+      #  # Check the GLIBC version.
+  glibc_version=$(ldd --version 2>&1 | grep "GLIBC" | awk '{print $NF}')
+
+  # Error handling if GLIBC version couldn't be determined.
+  if [[ -z "$glibc_version" ]]; then
+    echo "error: Could not determine GLIBC version." 1>&2
+    exit 1
+  fi
+
+  echo "Detected GLIBC version: $glibc_version"
+
+  # Extract major and minor version numbers for manylinux tag.
+  IFS='.' read -r glibc_major glibc_minor <<< "$glibc_version"
+  manylinux_version="${glibc_major}_${glibc_minor}"
+
+  # Detect architecture.
+  arch=$(uname -m)
+  case "$arch" in
+    aarch64|x86_64) ;; # Supported architectures
+    *) echo "error: Unsupported architecture: $arch" >&2; exit 1 ;;
+  esac
+
+  plat_name="manylinux_${manylinux_version}_${arch}"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+
+ arch=$(uname -m)
+  case "$arch" in
+    arm64) ;; # Supported architectures
+    *) echo "error: Unsupported architecture: $arch" >&2; exit 1 ;;
+  esac
 
 # TODO: update code above to process macos plat_name as well
 # In .bazelrc it is build with --macos_minimum_os=12.0
 # wonder if there is a better way
   plat_name="macosx_12_0_arm64"
-
+fi
   # Create a temp directory.
   local temp_dir="$(mktemp --directory)"
   trap "rm -rf ${temp_dir}" EXIT
