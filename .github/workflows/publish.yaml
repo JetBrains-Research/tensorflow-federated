@@ -103,7 +103,7 @@ jobs:
           - os: ubuntu-22.04-arm
             arch: aarch64
             sys: linux
-          - os: macos-latest
+          - os: macos-15
             arch: arm64
             sys: macos
     runs-on: ${{ matrix.os }}
