@@ -172,8 +172,8 @@ jobs:
             arch: x86_64
           - os: ubuntu-22.04-arm
             arch: aarch64
-          - os: macos-latest
-            arch: macos_arm64
+          - os: macos-15
+            arch: arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
