@@ -103,7 +103,7 @@ jobs:
           - os: ubuntu-22.04-arm
             arch: aarch64
             sys: linux
-          - os: macos-15
+          - os: macos-14
             arch: arm64
             sys: macos
     runs-on: ${{ matrix.os }}
@@ -172,7 +172,7 @@ jobs:
             arch: x86_64
           - os: ubuntu-22.04-arm
             arch: aarch64
-          - os: macos-15
+          - os: macos-14
             arch: arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
