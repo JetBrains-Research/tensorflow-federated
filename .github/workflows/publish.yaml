@@ -111,6 +111,8 @@ jobs:
     environment: release
     steps:
 
+
+
     - name: Checkout repository
       uses: actions/checkout@v4.1.7
       with:
@@ -177,6 +179,10 @@ jobs:
     timeout-minutes: 360
     environment: release
     steps:
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 14
 
     - name: Checkout repository
       uses: actions/checkout@v4.1.7
