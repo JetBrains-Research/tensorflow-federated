@@ -171,7 +171,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            image: quay.io/pypa/manylinux2014_x86_64
+            image: quay.io/pypa/manylinux_2_28_x86_64
             arch: x86_64
             sys: linux
     runs-on: ${{ matrix.os }}
@@ -180,9 +180,7 @@ jobs:
     environment: release
     steps:
 
-    - uses: actions/setup-node@v4
-      with:
-        node-version: 14
+
 
     - name: Checkout repository
       uses: actions/checkout@v4.1.7
