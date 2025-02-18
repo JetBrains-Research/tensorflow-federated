@@ -205,10 +205,8 @@ jobs:
     
     - name: Set up Python
       run: |
-        apt update 
-        apt install python3 
-        apt install python3-pip 
-        apt install python3-venv  # Optional
+        yum update -y
+        yum install -y python3
 #      uses: actions/setup-python@v5.1.0
 #      with:
 #        python-version: "3.11"
