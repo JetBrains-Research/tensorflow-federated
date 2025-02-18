@@ -206,6 +206,8 @@ jobs:
       with:
         python-version: "3.11"
         cache: "pip"
+        permissions:
+          contents: read
     
 
     - name: Install Python dependencies
