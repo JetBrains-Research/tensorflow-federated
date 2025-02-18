@@ -194,12 +194,12 @@ jobs:
         credentials_json: ${{ secrets.GOOGLE_CREDENTIALS }}
         create_credentials_file: true
 
-    - name: Set up bazel repository cache
-      uses: actions/cache@v4.2.0
-      with:
-        path: "~/.cache/bazel/"
-        key: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE') }}
-        restore-keys: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel
+#    - name: Set up bazel repository cache
+#      uses: actions/cache@v4.2.0
+#      with:
+#        path: "~/.cache/bazel/"
+#       key: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE') }}
+#        restore-keys: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel
 
     - name: Set up Python
       uses: actions/setup-python@v5.1.0
