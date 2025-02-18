@@ -200,12 +200,14 @@ jobs:
         path: "~/.cache/bazel/"
         key: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE') }}
         restore-keys: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel
+    - run: RUN apt-get update && apt-get install -y lsb-release
     
     - name: Set up Python
       uses: actions/setup-python@v5.1.0
       with:
         python-version: "3.10"
         cache: "pip"
+      
         
     
 
