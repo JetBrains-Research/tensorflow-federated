@@ -204,10 +204,9 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5.1.0
       with:
-        python-version: "3.11"
+        python-version: "3.10"
         cache: "pip"
-        permissions:
-          contents: read
+        
     
 
     - name: Install Python dependencies
