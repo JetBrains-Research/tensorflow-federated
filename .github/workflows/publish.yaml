@@ -171,8 +171,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            image: quay.io/pypa/manylinux_2_28_aarch64
-            arch: aarch64
+            image: quay.io/pypa/manylinux_2_28_x86_64
+            arch: x86_64
             sys: linux
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.image }}
@@ -204,7 +204,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5.1.0
       with:
-        python-version: "3.7.17"
+        python-version: "3.11"
         cache: "pip"
     
 
