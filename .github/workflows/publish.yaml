@@ -203,7 +203,7 @@ jobs:
 
 
     - name: Install lsb_release
-      run:  sudo yum install -y redhat-lsb-core  # For CentOS/RHEL-based systems
+      run:  RUN apt-get update && apt-get install -y lsb-release
     
     - name: Set up Python
       uses: actions/setup-python@v5.1.0
