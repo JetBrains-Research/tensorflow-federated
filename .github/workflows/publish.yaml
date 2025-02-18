@@ -203,15 +203,17 @@ jobs:
 
 
     
-    - name: Set up Python
+    - name: Set up lsb
       run: |
-        yum update -y
-        yum install -y python3
-#      uses: actions/setup-python@v5.1.0
-#      with:
-#        python-version: "3.11"
-#        cache: "pip"
-      
+         yum install redhat-lsb-core
+#        yum update -y
+#        yum install -y python3
+#      
+    - name: Set up python
+      uses: actions/setup-python@v5.1.0
+      with:
+        python-version: "3.11"
+        cache: "pip"
         
     
 
