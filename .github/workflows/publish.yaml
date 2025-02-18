@@ -205,7 +205,7 @@ jobs:
     
     - name: Set up lsb
       run: |
-         yum install redhat-lsb-core
+         yum install -y redhat-lsb-core
 #        yum update -y
 #        yum install -y python3
 #      
