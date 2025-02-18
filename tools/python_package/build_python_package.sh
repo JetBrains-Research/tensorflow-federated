@@ -14,6 +14,8 @@
 # limitations under the License.
 #
 # Tool to build the TensorFlow Federated Python package.
+trap "toml set --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" "manylinux_2_31_x86_64"" EXIT
+
 set -e
 
 usage() {
