@@ -171,12 +171,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            image: quay.io/pypa/manylinux_2_28_x86_64
+            image: quay.io/pypa/manylinux_2_28_x86_64:cp311
             arch: x86_64
             sys: linux
     runs-on: ${{ matrix.os }}
     container:
       image: ${{ matrix.image }}
+      env: 
     timeout-minutes: 360
     environment: release
     steps:
@@ -203,16 +204,16 @@ jobs:
         restore-keys: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel
 
 
-    - name: Set up lsb
-      run: |
-         yum install -y redhat-lsb-core
+#    - name: Set up lsb
+#      run: |
+#         yum install -y redhat-lsb-core
 
       
-    - name: Set up python
-      uses: actions/setup-python@v5.1.0
-      with:
-        python-version: "3.11"
-        cache: "pip"
+#    - name: Set up python
+#      uses: actions/setup-python@v5.1.0
+#      with:
+#        python-version: "3.11"
+#        cache: "pip"
         
     
 
