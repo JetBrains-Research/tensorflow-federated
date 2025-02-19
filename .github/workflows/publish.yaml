@@ -171,8 +171,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-#            image: quay.io/pypa/manylinux_2_28_x86_64:cp311
-            image: quay.io/pypa/manylinux2014_x86_64:cp310
+            image: quay.io/pypa/manylinux_2_28_x86_64
             arch: x86_64
             sys: linux
     runs-on: ${{ matrix.os }}
@@ -206,30 +205,29 @@ jobs:
 
 
 #    - name: Set up lsb
-#      run: |
-#         yum install -y redhat-lsb-core
+ #     run: |
+ #        yum install -y redhat-lsb-core
 
       
-#    - name: Set up python
-#      uses: actions/setup-python@v5.1.0
-#      with:
-#        python-version: "3.11"
-#        cache: "pip"
+  #  - name: Set up python
+  #    uses: actions/setup-python@v5.1.0
+  #    with:
+  #      python-version: "3.11"
+  #      cache: "pip"
         
     
 
-    - name: Install Python dependencies
-      run: |
-        pip install --upgrade "pip"
+ #   - name: Install Python dependencies
+#      run: |
+#        pip install --upgrade "pip"
 
     - name: Install LLVM and Clang
       uses: KyleMayes/install-llvm-action@v2
       with:
         version: "14.0"
-
+#pip install --upgrade "numpy~=1.25"
     - name: Build Python package
-      run: |
-        pip install --upgrade "numpy~=1.25"
+      run: |        
         bazelisk run //tools/python_package:build_python_package \
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
