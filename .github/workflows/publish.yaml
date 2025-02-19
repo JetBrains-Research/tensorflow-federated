@@ -203,7 +203,8 @@ jobs:
         restore-keys: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel
 
 
-    
+    - name: ensure interpreters are there
+      run: manylinux-interpreters ensure-all
 #    - name: Set up lsb
 #      run: |
 #         yum install -y redhat-lsb-core
