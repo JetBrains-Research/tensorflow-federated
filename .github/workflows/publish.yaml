@@ -211,9 +211,11 @@ jobs:
     - name: Set up lsb
       run: |
          yum install -y redhat-lsb-core
-         bash
-         python --version
+         /bin/bash
+         curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+         python get-pip.py
          pip --version
+
 
       
     - name: Set up python
