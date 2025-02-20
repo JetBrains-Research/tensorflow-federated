@@ -171,8 +171,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            image: quay.io/pypa/manylinux_2_31_x86_64
-            arch: x86_64
+            image: quay.io/pypa/manylinux_2_31_armv7l
+            arch: armv7l
             sys: linux
     runs-on: ${{ matrix.os }}
     container:
