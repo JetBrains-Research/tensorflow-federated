@@ -208,9 +208,8 @@ jobs:
 
 
 
-    - name: Pre-setup
+    - name: Set up Pip
       run: |
-         yum install -y redhat-lsb-core
          curl "https://bootstrap.pypa.io/get-pip.py" -o "get-pip.py"
          python3 get-pip.py
 
