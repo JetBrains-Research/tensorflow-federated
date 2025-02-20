@@ -242,7 +242,7 @@ jobs:
 ##        python3 -m pip install --upgrade "numpy~=1.25"    did not work
     - name: Build Python package
       run: | 
-        pip install --upgrade "numpy~=1.25"         
+        python3 -m pip install --upgrade "numpy~=1.25"         
         bazelisk run //tools/python_package:build_python_package \
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
