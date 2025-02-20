@@ -204,6 +204,13 @@ jobs:
         restore-keys: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel
 
 
+
+
+    - name: Check Python version
+      run: |
+        bash
+        python3 --version
+
 #    - name: Set up lsb
  #     run: |
  #        yum install -y redhat-lsb-core
@@ -225,9 +232,10 @@ jobs:
       uses: KyleMayes/install-llvm-action@v2
       with:
         version: "14.0"
-#pip install --upgrade "numpy~=1.25"
+
     - name: Build Python package
-      run: |        
+      run: | 
+        pip install --upgrade "numpy~=1.25"       
         bazelisk run //tools/python_package:build_python_package \
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
