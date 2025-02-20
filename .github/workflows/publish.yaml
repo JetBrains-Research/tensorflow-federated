@@ -208,12 +208,6 @@ jobs:
 
 
 
-    - name: Set up Pip
-      run: |
-        curl -Lo /usr/local/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.12.0/bazelisk-linux-amd64
-        chmod +x /usr/local/bin/bazelisk
-        bazelisk --version
-        clang --version
 #         curl "https://bootstrap.pypa.io/get-pip.py" -o "get-pip.py"
 #         python3 get-pip.py
          
@@ -236,6 +230,14 @@ jobs:
       uses: KyleMayes/install-llvm-action@v2
       with:
         version: "14.0"
+
+    
+    - name: Set up Pip
+      run: |
+        curl -Lo /usr/local/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.12.0/bazelisk-linux-amd64
+        chmod +x /usr/local/bin/bazelisk
+        bazelisk --version
+        
 
     - name: Build Python package
       run: | 
