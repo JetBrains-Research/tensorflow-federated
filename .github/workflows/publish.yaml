@@ -171,8 +171,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            image: quay.io/pypa/manylinux_2_31_armv7l
-            arch: armv7l
+            image: quay.io/pypa/manylinux_2_28_x86_64
+            arch: x86_64
             sys: linux
     runs-on: ${{ matrix.os }}
     container:
@@ -182,8 +182,7 @@ jobs:
     environment: release
     steps:
 
-    - name: Download OpenSSL
-      run: yum install openssl-devel
+
 
     - name: Checkout repository
       uses: actions/checkout@v4.1.7
@@ -214,6 +213,7 @@ jobs:
         curl -Lo /usr/local/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.12.0/bazelisk-linux-amd64
         chmod +x /usr/local/bin/bazelisk
         bazelisk --version
+        clang --version
 #         curl "https://bootstrap.pypa.io/get-pip.py" -o "get-pip.py"
 #         python3 get-pip.py
          
