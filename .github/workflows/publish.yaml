@@ -182,7 +182,8 @@ jobs:
     environment: release
     steps:
 
-
+    - name: Download OpenSSL
+      run: yum install openssl-devel
 
     - name: Checkout repository
       uses: actions/checkout@v4.1.7
