@@ -171,7 +171,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
-            image: quay.io/pypa/manylinux_2_28_x86_64
+            image: quay.io/pypa/manylinux_2_31_x86_64
             arch: x86_64
             sys: linux
     runs-on: ${{ matrix.os }}
@@ -210,11 +210,12 @@ jobs:
 
     - name: Set up Pip
       run: |
-         curl "https://bootstrap.pypa.io/get-pip.py" -o "get-pip.py"
-         python3 get-pip.py
-         curl -Lo /usr/local/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.12.0/bazelisk-linux-amd64
-         chmod +x /usr/local/bin/bazelisk
-         bazelisk --version
+        curl -Lo /usr/local/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.12.0/bazelisk-linux-amd64
+        chmod +x /usr/local/bin/bazelisk
+        bazelisk --version
+#         curl "https://bootstrap.pypa.io/get-pip.py" -o "get-pip.py"
+#         python3 get-pip.py
+         
 
 
       
@@ -237,7 +238,7 @@ jobs:
 
     - name: Build Python package
       run: | 
-        pip install --upgrade "numpy~=1.25"       
+        python3 -m pip install --upgrade "numpy~=1.25"       
         bazelisk run //tools/python_package:build_python_package \
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
