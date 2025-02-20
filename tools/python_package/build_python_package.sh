@@ -14,6 +14,8 @@
 # limitations under the License.
 #
 # Tool to build the TensorFlow Federated Python package.
+trap "toml set --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" "manylinux_2_31_x86_64"" EXIT
+
 set -e
 
 usage() {
@@ -48,7 +50,9 @@ main() {
     exit 1
   fi
 
-  # Check the GLIBC version.
+
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+      #  # Check the GLIBC version.
   glibc_version=$(ldd --version 2>&1 | grep "GLIBC" | awk '{print $NF}')
 
   # Error handling if GLIBC version couldn't be determined.
@@ -71,8 +75,19 @@ main() {
   esac
 
   plat_name="manylinux_${manylinux_version}_${arch}"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
 
+ arch=$(uname -m)
+  case "$arch" in
+    arm64) ;; # Supported architectures
+    *) echo "error: Unsupported architecture: $arch" >&2; exit 1 ;;
+  esac
 
+# TODO: update code above to process macos plat_name as well
+# In .bazelrc it is build with --macos_minimum_os=12.0
+# wonder if there is a better way
+  plat_name="macosx_12_0_arm64"
+fi
   # Create a temp directory.
   local temp_dir="$(mktemp --directory)"
   trap "rm -rf ${temp_dir}" EXIT
