@@ -206,28 +206,24 @@ jobs:
 
 
 
-    - name: Check Python version
-      run: |
-        bash
-        /opt/python/cp311-cp311m get-pip.py
-        
 
-#    - name: Set up lsb
- #     run: |
- #        yum install -y redhat-lsb-core
+
+    - name: Set up lsb
+      run: |
+         yum install -y redhat-lsb-core
 
       
-  #  - name: Set up python
-  #    uses: actions/setup-python@v5.1.0
-  #    with:
-  #      python-version: "3.11"
-  #      cache: "pip"
+    - name: Set up python
+      uses: actions/setup-python@v5.1.0
+      with:
+        python-version: "3.11"
+        cache: "pip"
         
     
 
- #   - name: Install Python dependencies
-#      run: |
-#        pip install --upgrade "pip"
+    - name: Install Python dependencies
+      run: |
+        pip install --upgrade "pip"
 
     - name: Install LLVM and Clang
       uses: KyleMayes/install-llvm-action@v2
