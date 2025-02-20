@@ -211,6 +211,7 @@ jobs:
     - name: Set up lsb
       run: |
          yum install -y redhat-lsb-core
+         bash
          python --version
          pip --version
 
