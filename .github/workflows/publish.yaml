@@ -234,14 +234,16 @@ jobs:
     
     - name: Set up Pip
       run: |
+        curl "https://bootstrap.pypa.io/get-pip.py" -o "get-pip.py"
+        python3 get-pip.py
         curl -Lo /usr/local/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.12.0/bazelisk-linux-amd64
         chmod +x /usr/local/bin/bazelisk
         bazelisk --version
         
-
+##        python3 -m pip install --upgrade "numpy~=1.25"    did not work
     - name: Build Python package
       run: | 
-        python3 -m pip install --upgrade "numpy~=1.25"       
+        pip install --upgrade "numpy~=1.25"         
         bazelisk run //tools/python_package:build_python_package \
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
