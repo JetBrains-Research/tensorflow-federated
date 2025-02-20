@@ -208,10 +208,10 @@ jobs:
 
 
 
-    - name: Set up lsb
+    - name: Pre-setup
       run: |
          yum install -y redhat-lsb-core
-         yum -y install python-pip
+         yum install -y python-pip
 
 
       
