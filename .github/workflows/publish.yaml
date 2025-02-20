@@ -208,9 +208,10 @@ jobs:
 
     - name: Check Python version
       run: |
-        bash
-        python3 --version
-        python get-pip.py
+       python get-pip.py
+#        bash
+#        python3 --version
+        
 
 #    - name: Set up lsb
  #     run: |
