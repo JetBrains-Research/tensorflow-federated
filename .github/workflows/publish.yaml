@@ -216,17 +216,17 @@ jobs:
 
 
       
-    - name: Set up python
-      uses: actions/setup-python@v5.1.0
-      with:
-        python-version: "3.11"
-        cache: "pip"
+#    - name: Set up python
+#      uses: actions/setup-python@v5.1.0
+#      with:
+#        python-version: "3.11"
+#        cache: "pip"
         
     
 
-    - name: Install Python dependencies
-      run: |
-        pip install --upgrade "pip"
+#    - name: Install Python dependencies
+#      run: |
+#        pip install --upgrade "pip"
 
     - name: Install LLVM and Clang
       uses: KyleMayes/install-llvm-action@v2
