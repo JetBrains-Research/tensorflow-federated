@@ -209,7 +209,7 @@ jobs:
     - name: Check Python version
       run: |
         bash
-        which python
+        /opt/python/cp311-cp311m get-pip.py
         
 
 #    - name: Set up lsb
