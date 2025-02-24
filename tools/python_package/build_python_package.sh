@@ -106,7 +106,7 @@ fi
   pip install --upgrade "build" "toml-cli"
 
   # Trap to avoid editing a linked file
-  previous_plat_name = toml get --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" 
+  previous_plat_name=$(toml get --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name")
   trap "toml set --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" "$previous_plat_name"" EXIT
 
   # Update wheel platform
