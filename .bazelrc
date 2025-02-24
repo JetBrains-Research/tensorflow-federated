@@ -45,6 +45,8 @@ build:linux_aarch64 --copt=-march=armv8-a
 build:linux_aarch64 --host_copt=-march=armv8-a
 
 # Configure for Linux on ARM64 (Apple Silicon)
+# Macosx version in plat name should be aligned with --macos_minimum_os
+# flag in .bazelrc. And requires a change in both places to be made.
 build:macos --macos_minimum_os=12.0
 build:macos_arm64 --copt=-mcpu=apple-m1
 build:macos_arm64 --host_copt=-mcpu=apple-m1

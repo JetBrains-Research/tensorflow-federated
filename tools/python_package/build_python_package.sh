@@ -26,9 +26,6 @@ usage() {
 }
 
 main() {
-  plat_name = toml get --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" 
-  trap "toml set --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" "$plat_name"" EXIT
-
 
   # Parse the arguments.
   local output_dir="${BUILD_WORKING_DIRECTORY}/dist"
@@ -55,9 +52,8 @@ main() {
     exit 1
   fi
 
-
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-      #  # Check the GLIBC version.
+      # Check the GLIBC version.
   glibc_version=$(ldd --version 2>&1 | grep "GLIBC" | awk '{print $NF}')
 
   # Error handling if GLIBC version couldn't be determined.
@@ -76,7 +72,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   arch=$(uname -m)
   case "$arch" in
     aarch64|x86_64) ;; # Supported architectures
-    *) echo "error: Unsupported architecture: $arch" >&2; exit 1 ;;
+    *) echo "error: Unsupported architecture:  linux/$arch" and "darwin/$arch" >&2; exit 1 ;;
   esac
 
   plat_name="manylinux_${manylinux_version}_${arch}"
@@ -90,6 +86,8 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 
 # TODO: update code above to process macos plat_name as well
 # In .bazelrc it is build with --macos_minimum_os=12.0
+# Macosx version in plat name should be aligned with --macos_minimum_os
+# flag in .bazelrc. And requires a change in both places to be made.
 # wonder if there is a better way
   plat_name="macosx_12_0_arm64"
 fi
@@ -106,6 +104,10 @@ fi
 
   # Build the Python package.
   pip install --upgrade "build" "toml-cli"
+
+  # Trap to avoid editing a linked file
+  previous_plat_name = toml get --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" 
+  trap "toml set --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" "$previous_plat_name"" EXIT
 
   # Update wheel platform
   toml set --toml-path "pyproject.toml" "tool.distutils.bdist_wheel.plat-name" "$plat_name"

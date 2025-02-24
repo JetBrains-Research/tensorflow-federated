@@ -111,8 +111,6 @@ jobs:
     environment: release
     steps:
 
-
-
     - name: Checkout repository
       uses: actions/checkout@v4.1.7
       with:
@@ -182,8 +180,6 @@ jobs:
     environment: release
     steps:
 
-
-
     - name: Checkout repository
       uses: actions/checkout@v4.1.7
       with:
@@ -203,45 +199,25 @@ jobs:
         key: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE') }}
         restore-keys: ${{ runner.os }}-${{ matrix.image }}-${{ matrix.arch }}-bazel
 
-
-
-
-
-
-#         curl "https://bootstrap.pypa.io/get-pip.py" -o "get-pip.py"
-#         python3 get-pip.py
-
-
-
-
 #    - name: Set up python
 #      uses: actions/setup-python@v5.1.0
 #      with:
 #        python-version: "3.11"
 #        cache: "pip"
 
-
-
-#    - name: Install Python dependencies
-#      run: |
-#        pip install --upgrade "pip"
-
     - name: Install LLVM and Clang
       uses: KyleMayes/install-llvm-action@v2
       with:
         version: "14.0"
 
-    - name: Set up Pip
+    - name: Set up Pip and Bazelisk
       run: |
         python3 -m ensurepip
         python3 -m pip install --upgrade "pip"
         curl -Lo /usr/local/bin/bazelisk https://github.com/bazelbuild/bazelisk/releases/download/v1.12.0/bazelisk-linux-amd64
         chmod +x /usr/local/bin/bazelisk
         bazelisk --version
-        bash
-        clang -v
 
-##        python3 -m pip install --upgrade "numpy~=1.25"    did not work
     - name: Build Python package
       run: | 
         python3 -m pip install --upgrade "numpy~=1.25"         
