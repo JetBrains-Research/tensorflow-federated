@@ -72,7 +72,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   arch=$(uname -m)
   case "$arch" in
     aarch64|x86_64) ;; # Supported architectures
-    *) echo "error: Unsupported architecture:  linux/$arch" and "darwin/$arch" >&2; exit 1 ;;
+    *) echo "error: Unsupported architecture:  linux/$arch"  >&2; exit 1 ;;
   esac
 
   plat_name="manylinux_${manylinux_version}_${arch}"
@@ -81,7 +81,7 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
  arch=$(uname -m)
   case "$arch" in
     arm64) ;; # Supported architectures
-    *) echo "error: Unsupported architecture: $arch" >&2; exit 1 ;;
+    *) echo "error: Unsupported architecture: darwin/$arch" >&2; exit 1 ;;
   esac
 
 # TODO: update code above to process macos plat_name as well
