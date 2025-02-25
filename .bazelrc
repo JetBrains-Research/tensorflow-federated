@@ -44,13 +44,20 @@ build:linux_x86_64 --host_copt=-march=haswell
 build:linux_aarch64 --copt=-march=armv8-a
 build:linux_aarch64 --host_copt=-march=armv8-a
 
+# Configure for Linux on ARM64 (Apple Silicon)
+# Macosx version in plat name should be aligned with --macos_minimum_os
+# flag in .bazelrc. And requires a change in both places to be made.
+build:macos --macos_minimum_os=12.0
+build:macos_arm64 --copt=-mcpu=apple-m1
+build:macos_arm64 --host_copt=-mcpu=apple-m1
+
 # Only use level three optimizations for target, not necessarily for host
 # since host artifacts don't need to be fast.
 build --copt=-O3
 
 # Suppress C++ compiler warnings.
-build:linux --copt=-w
-build:linux --host_copt=-w
+build --copt=-w
+build --host_copt=-w
 
 #
 # Remote execution capabilities
@@ -118,12 +125,12 @@ build:linux --define=INCLUDEDIR=$(PREFIX)/include
 build:linux --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 
 # By default, build TF in C++ 17 mode.
-build:linux --cxxopt=-std=c++17
-build:linux --host_cxxopt=-std=c++17
+build --cxxopt=-std=c++17
+build --host_cxxopt=-std=c++17
 
 # Do not risk cache corruption. See:
 # https://github.com/bazelbuild/bazel/issues/3360
-build:linux --experimental_guard_against_concurrent_changes
+build --experimental_guard_against_concurrent_changes
 
 # Configure short or long logs
 build:short_logs --output_filter=DONT_MATCH_ANYTHING

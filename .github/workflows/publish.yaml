@@ -102,8 +102,13 @@ jobs:
         include:
           - os: ubuntu-22.04
             arch: x86_64
+            sys: linux
           - os: ubuntu-22.04-arm
             arch: aarch64
+            sys: linux
+          - os: macos-14
+            arch: arm64
+            sys: macos
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     environment: release
@@ -150,14 +155,14 @@ jobs:
             --build_tag_filters="-nokokoro,-nopresubmit,-requires-gpu-nvidia" \
             --google_credentials="${{ steps.auth.outputs.credentials_file_path }}" \
             --remote_cache="https://storage.googleapis.com/${{ vars.BAZEL_CACHE_BUCKET }}/${{ github.job }}" \
-            --config="linux_${{ matrix.arch }}" \
+            --config="${{ matrix.sys }}_${{ matrix.arch }}" \
             -- \
             --output_dir="${{ github.workspace }}/dist/"
 
     - name: Upload Python package
       uses: actions/upload-artifact@v4.3.3
       with:
-        name: python-package-distributions-${{ matrix.arch }}
+        name: python-package-distributions-${{ matrix.sys }}-${{ matrix.arch }}
         path: dist/*.whl
 
   test-package:
@@ -168,8 +173,13 @@ jobs:
         include:
           - os: ubuntu-22.04
             arch: x86_64
+            sys: linux
           - os: ubuntu-22.04-arm
             arch: aarch64
+            sys: linux
+          - os: macos-14
+            arch: arm64
+            sys: macos
     runs-on: ${{ matrix.os }}
     timeout-minutes: 5
     steps:
@@ -182,7 +192,7 @@ jobs:
     - name: Download Python package
       uses: actions/download-artifact@v4.1.7
       with:
-        name: python-package-distributions-${{ matrix.arch }}
+        name: python-package-distributions-${{ matrix.sys }}-${{ matrix.arch }}
         path: dist/
 
     - name: Set up Python
@@ -210,7 +220,7 @@ jobs:
 
   publish-package:
     name: Publish Package
-    needs: [build-package, test-package]
+    needs: [build-package,test-package]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions:

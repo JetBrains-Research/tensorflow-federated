@@ -53,6 +53,10 @@ cc_library(
 
 cc_binary(
     name = "worker_binary",
-    linkopts = ["-lrt"],
+    linkopts = select({
+        "@platforms//os:osx": [],
+        "@platforms//os:linux": ["-lrt"],
+        "//conditions:default": [],
+    }),
     deps = [":worker_main"],
 )
