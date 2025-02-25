@@ -72,7 +72,7 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
   arch=$(uname -m)
   case "$arch" in
     aarch64|x86_64) ;; # Supported architectures
-    *) echo "error: Unsupported architecture:  linux/$arch"  >&2; exit 1 ;;
+    *) echo "error: Unsupported architecture: linux/$arch"  >&2; exit 1 ;;
   esac
 
   plat_name="manylinux_${manylinux_version}_${arch}"
