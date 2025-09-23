@@ -11,10 +11,23 @@
 workspace(name = "org_tensorflow_federated")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 #
 # Direct dependencies
 #
+
+http_archive(
+    name = "platforms",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/1.0.0/platforms-1.0.0.tar.gz",
+        "https://github.com/bazelbuild/platforms/releases/download/1.0.0/platforms-1.0.0.tar.gz",
+    ],
+    sha256 = "3384eb1c30762704fbe38e440204e114154086c8fc8a8c2e3e28441028c019a8",
+)
+
+# Warning:
+# for nsync compilation you have to install g++: apt-get update && apt-get install -y g++
 
 http_archive(
     name = "bazel_skylib",
@@ -30,11 +43,22 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_cc/releases/download/0.1.5/rules_cc-0.1.5.tar.gz",
 )
 
+# http_archive(
+#     name = "com_github_grpc_grpc",
+#     sha256 = "76900ab068da86378395a8e125b5cc43dfae671e09ff6462ddfef18676e2165a",
+#     strip_prefix = "grpc-1.50.0",
+#     url = "https://github.com/grpc/grpc/archive/refs/tags/v1.50.0.tar.gz",
+# )
+
 http_archive(
     name = "com_github_grpc_grpc",
+    patches = [
+        # Enable dynamic_lookup linkopt on macOS
+        "//third_party/grpc:dynamic_lookup.patch",
+    ],
     sha256 = "76900ab068da86378395a8e125b5cc43dfae671e09ff6462ddfef18676e2165a",
     strip_prefix = "grpc-1.50.0",
-    url = "https://github.com/grpc/grpc/archive/refs/tags/v1.50.0.tar.gz",
+    urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.50.0.tar.gz"],
 )
 
 http_archive(
@@ -58,6 +82,32 @@ http_archive(
     url = "https://github.com/google/differential-privacy/archive/refs/tags/v3.0.0.tar.gz",
 )
 
+# Register a clang C++ toolchain.
+git_repository(
+    name = "toolchains_llvm",
+    remote = "https://github.com/bazel-contrib/toolchains_llvm.git",
+    tag = "1.0.0",
+)
+
+load("@toolchains_llvm//toolchain:deps.bzl", "bazel_toolchain_dependencies")
+
+bazel_toolchain_dependencies()
+
+load("@toolchains_llvm//toolchain:rules.bzl", "llvm_toolchain")
+
+llvm_toolchain(
+    name = "llvm_toolchain",
+    llvm_versions = {
+        "": "15.0.6",
+        "linux-aarch64": "15.0.6",
+        "darwin-aarch64": "15.0.7",
+    },
+)
+
+load("@llvm_toolchain//:toolchains.bzl", "llvm_register_toolchains")
+
+llvm_register_toolchains()
+
 # This commit is determined by
 # https://github.com/tensorflow/tensorflow/blob/v2.16.1/third_party/absl/workspace.bzl#L10.
 http_archive(
@@ -72,13 +122,6 @@ http_archive(
     sha256 = "81964fe578e9bd7c94dfdb09c8e4d6e6759e19967e397dbea48d1c10e45d0df2",
     strip_prefix = "googletest-release-1.12.1",
     url = "https://github.com/google/googletest/archive/refs/tags/release-1.12.1.tar.gz",
-)
-
-http_archive(
-    name = "com_google_protobuf",
-    sha256 = "1add10f9bd92775b91f326da259f243881e904dd509367d5031d4c782ba82810",
-    strip_prefix = "protobuf-3.21.9",
-    url = "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.21.9.tar.gz",
 )
 
 http_archive(
@@ -106,18 +149,112 @@ http_archive(
     url = "https://github.com/google-parfait/federated-language/archive/16e734b633e68b613bb92918e6f3304774853e9b.tar.gz",
 )
 
+http_archive(
+    name = "rules_java",
+    sha256 = "c7bd858a132c7b8febe040a90fa138c2e3e7f0bce47122ac2ad43906036a276c",
+    urls = [
+        "https://github.com/bazelbuild/rules_java/releases/download/8.3.0/rules_java-8.3.0.tar.gz",
+    ],
+)
+
+load("@rules_java//java:repositories.bzl", "rules_java_dependencies", "rules_java_toolchains")
+
+rules_java_dependencies()
+
+rules_java_toolchains()
+
+RULES_JVM_EXTERNAL_TAG = "6.0"
+
+RULES_JVM_EXTERNAL_SHA = "85fd6bad58ac76cc3a27c8e051e4255ff9ccd8c92ba879670d195622e7c0a9b7"
+
+http_archive(
+    name = "rules_jvm_external",
+    sha256 = RULES_JVM_EXTERNAL_SHA,
+    strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
+    url = "https://github.com/bazelbuild/rules_jvm_external/releases/download/%s/rules_jvm_external-%s.tar.gz" % (RULES_JVM_EXTERNAL_TAG, RULES_JVM_EXTERNAL_TAG),
+)
+
+load("@rules_jvm_external//:repositories.bzl", "rules_jvm_external_deps")
+
+rules_jvm_external_deps()
+
+load("@rules_jvm_external//:setup.bzl", "rules_jvm_external_setup")
+
+rules_jvm_external_setup()
+
+load("@rules_jvm_external//:defs.bzl", "maven_install")
+
+maven_install(
+    name = "maven",
+    artifacts = [
+        "com.google.guava:guava:32.1.2-jre",
+        "com.google.code.findbugs:jsr305:3.0.2",
+        "junit:junit:4.13.2",
+    ],
+    repositories = [
+        "https://repo1.maven.org/maven2",
+    ],
+)
+
+
 # The version of TensorFlow should match the version in
 # https://github.com/google-parfait/tensorflow-federated/blob/main/requirements.txt.
 http_archive(
     name = "org_tensorflow",
     patches = [
+        # This patch enables googleapi Java and Python proto rules such as
+        # @com_google_googleapis//google/rpc:rpc_java_proto.
+        "//third_party/tensorflow:googleapis_proto_rules.patch",
+        # This patch works around failures in GitHub infrastructure to
+        # download versions of LLVM pointed to by non-HEAD TensorFlow.
+        # TODO(team): Remove this patch when resolved.
+        "//third_party/tensorflow:llvm_url.patch",
+        # The version of googleapis imported by TensorFlow 2.14 doesn't provide
+        # `py_proto_library` targets for //google/longrunning.
+        "//third_party/tensorflow:googleapis.patch",
+        # This patch replaces tf_gen_op_wrapper_py's dependency on @tensorflow
+        # with @pypi_tensorflow.
+        "//third_party/tensorflow:tf_gen_op_wrapper_py.patch",
+        # gRPC v1.48.0-pre1 and later include zconf.h in addition to zlib.h;
+        # TensorFlow's build rule for zlib only exports the latter.
+        "//third_party/tensorflow:zlib.patch",
+        # These patches enables building TensorFlow Federated from source by
+        # fixing visibility in TensorFlow.
         "//third_party/tensorflow:internal_visibility.patch",
-        "//third_party/tensorflow:python_toolchain.patch",
         "//third_party/tensorflow:tf2xla_visibility.patch",
+
+        "//third_party/tensorflow:snappy_include.patch",
+        # allow self-signed certificates on macos (otherwise SecureTransport will be used which does not allow that)
+        "//third_party/tensorflow:curl_ssl_macos.patch",
+
+
+        # "//third_party/tensorflow:python_toolchain.patch",
+
     ],
     sha256 = "ce357fd0728f0d1b0831d1653f475591662ec5bca736a94ff789e6b1944df19f",
     strip_prefix = "tensorflow-2.14.0",
     url = "https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.14.0.tar.gz",
+)
+
+load("@org_tensorflow//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+
+# Update protobug from TensorFlow to enable dynamic_lookup on macOS for Bazel 7
+# Check https://github.com/protocolbuffers/protobuf/pull/19785/files
+tf_http_archive(
+    name = "com_google_protobuf",
+    patch_file = [
+        "@org_tensorflow//third_party/protobuf:protobuf.patch",
+        # Enable dynamic_lookup linkopt on macOS
+        "@org_tensorflow_federated//third_party/protobuf:dynamic_lookup_macos.patch",
+    ],
+    sha256 = "f66073dee0bc159157b0bd7f502d7d1ee0bc76b3c1eac9836927511bdc4b3fc1",
+    strip_prefix = "protobuf-3.21.9",
+    system_build_file = "@org_tensorflow//third_party/systemlibs:protobuf.BUILD",
+    system_link_files = {
+        "@org_tensorflow///third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
+        "@org_tensorflow///third_party/systemlibs:protobuf_deps.bzl": "protobuf_deps.bzl",
+    },
+    urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/v3.21.9.zip"),
 )
 
 # This commit is determined by
@@ -129,11 +266,16 @@ http_archive(
     url = "https://github.com/pybind/pybind11_abseil/archive/2c4932ed6f6204f1656e245838f4f5eae69d2e29.tar.gz",
 )
 
-http_archive(
+tf_http_archive(
     name = "pybind11_bazel",
-    sha256 = "e8355ee56c2ff772334b4bfa22be17c709e5573f6d1d561c7176312156c27bd4",
-    strip_prefix = "pybind11_bazel-2.11.1",
-    url = "https://github.com/pybind/pybind11_bazel/archive/refs/tags/v2.11.1.tar.gz",
+    patch_file = [
+        "@org_tensorflow//third_party/pybind11_bazel:pybind11_bazel.patch",
+        # Enable dynamic_lookup linkopt on macOS
+        "@org_tensorflow_federated//third_party/pybind11_bazel:dynamic_lookup.patch",
+    ],
+    sha256 = "516c1b3a10d87740d2b7de6f121f8e19dde2c372ecbfe59aef44cd1872c10395",
+    strip_prefix = "pybind11_bazel-72cbbf1fbc830e487e3012862b7b720001b70672",
+    urls = tf_mirror_urls("https://github.com/pybind/pybind11_bazel/archive/72cbbf1fbc830e487e3012862b7b720001b70672.tar.gz"),
 )
 
 # This commit is determined by
@@ -152,11 +294,38 @@ http_archive(
     url = "https://github.com/bazelbuild/rules_license/archive/refs/tags/0.0.8.tar.gz",
 )
 
+# Python rules for Bazel
 http_archive(
     name = "rules_python",
-    sha256 = "c68bdc4fbec25de5b5493b8819cfc877c4ea299c0dcb15c244c5a00208cde311",
-    strip_prefix = "rules_python-0.31.0",
-    url = "https://github.com/bazelbuild/rules_python/archive/refs/tags/0.31.0.tar.gz",
+    patches = [
+        "//third_party/patches:py_package.patch",
+    ],
+    sha256 = "690e0141724abb568267e003c7b6d9a54925df40c275a870a4d934161dc9dd53",
+    strip_prefix = "rules_python-0.40.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.40.0/rules_python-0.40.0.tar.gz",
+)
+
+load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
+
+py_repositories()
+
+load(
+    "//tools/python_version:python_repo.bzl",
+    "python_repository",
+)
+
+python_repository(name = "python_version_repo")
+
+load("@python_version_repo//:py_version.bzl", "HERMETIC_PYTHON_VERSION")
+
+python_register_toolchains(
+    name = "python",
+    ignore_root_user_error = True,
+    minor_mapping = {
+        "3.10": "3.10.11",
+        "3.11": "3.11.6",
+    },
+    python_version = HERMETIC_PYTHON_VERSION,
 )
 
 #
@@ -185,10 +354,6 @@ http_archive(
 # Transitive dependencies, grouped by direct dependency.
 #
 
-load("@rules_python//python:repositories.bzl", "py_repositories")
-
-py_repositories()
-
 load("@org_tensorflow//tensorflow:workspace3.bzl", "tf_workspace3")
 
 tf_workspace3()
@@ -214,3 +379,18 @@ protobuf_deps()
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
 
 grpc_deps()
+
+# Engine deps
+http_archive(
+    name = "nlohmann_json",
+    url = "https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz",
+    strip_prefix = "json",
+    build_file_content = """
+cc_library(
+    name = "json",
+    hdrs = glob(["single_include/nlohmann/*.hpp"]),
+    includes = ["single_include"],
+    visibility = ["//visibility:public"],
+)
+""",
+)
