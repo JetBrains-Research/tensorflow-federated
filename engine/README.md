@@ -17,7 +17,7 @@ The TFF Engine libraries provide C++ and Java APIs, as well as command-line tool
 ### 3. Command-Line Tools
 - **checkpoint_tool**: Build or parse TensorFlow checkpoints from JSON or binary files.
 - **plan_tool**: Build, parse, or sample aggregation plans.
-- **ass_tool**: Java-based aggregation session tool for running aggregation jobs.
+- **agg_tool**: Java-based aggregation session tool for running aggregation jobs.
 
 ## Example Usage
 
