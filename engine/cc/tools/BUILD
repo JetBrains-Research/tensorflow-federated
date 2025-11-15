@@ -16,10 +16,9 @@ cc_binary(
 	name = "plan_tool",
 	srcs = ["plan_tool.cc"],
 	deps = [
-		"//engine/cc/aggregation:plan_cc_proto",
+		"//engine/cc/execution:plan_cc_proto",
 		"@com_google_absl//absl/flags:parse",
 		"@com_google_absl//absl/strings:str_format",
 		"@com_google_protobuf//:protobuf",
-		#"@com_google_protobuf//:protobuf_util",
 	],
 )

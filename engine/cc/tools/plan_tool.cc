@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 #include "absl/flags/usage.h"
-#include "engine/cc/aggregation/plan.pb.h"
+#include "engine/cc/execution/plan.pb.h"
 #include "google/protobuf/util/json_util.h"
 #include "absl/flags/parse.h"
 

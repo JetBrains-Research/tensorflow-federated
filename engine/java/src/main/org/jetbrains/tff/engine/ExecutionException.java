@@ -14,28 +14,28 @@
 package org.jetbrains.tff.engine;
 
 /** Exception thrown when interaction with aggregation fails. */
-public final class AggregationException extends Exception {
+public final class ExecutionException extends Exception {
 
   // Equivalent to org.tensorflow.framework.Code.UNKNOWN
   public static final int UNKNOWN = 2;
   private final int errorCode;
 
-  public AggregationException(String message) {
+  public ExecutionException(String message) {
     super(message);
     this.errorCode = UNKNOWN;
   }
 
-  public AggregationException(String message, Throwable t) {
+  public ExecutionException(String message, Throwable t) {
     super(message, t);
     this.errorCode = UNKNOWN;
   }
 
-  public AggregationException(int errorCode, String message) {
+  public ExecutionException(int errorCode, String message) {
     super(message);
     this.errorCode = errorCode;
   }
 
-  public AggregationException(int errorCode, String message, Throwable t) {
+  public ExecutionException(int errorCode, String message, Throwable t) {
     super(message, t);
     this.errorCode = errorCode;
   }

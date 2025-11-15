@@ -17,23 +17,12 @@ import static com.google.common.base.Preconditions.checkArgument;
 
 /// A simple wrapper around the checkpoint aggregator.
 public final class AggregationSession implements AutoCloseable {
-  /// Creates a new session, based on the plan.
-  public static AggregationSession createFromByteArray(byte[] plan) {
-    try {
-      byte[] configuration = extractConfiguration(plan);
-      long sessionHandle = createNativeFromByteArray(configuration);
-      return new AggregationSession(sessionHandle, configuration);
-    } catch (AggregationException e) {
-      throw onAggregationException(e);
-    }
-  }
-
   /// Accumulates the list of checkpoint via nested tensor aggregators in memory.
   public void accumulate(byte[][] checkpoints) {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
       runAccumulate(scopedHandle.get(), checkpoints);
-    } catch (AggregationException e) {
-      throw onAggregationException(e);
+    } catch (ExecutionException e) {
+      throw onExecutionException(e);
     }
   }
 
@@ -41,8 +30,8 @@ public final class AggregationSession implements AutoCloseable {
   public void mergeWith(byte[][] serialized) {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
       mergeWith(scopedHandle.get(), configuration, serialized);
-    } catch (AggregationException e) {
-      throw onAggregationException(e);
+    } catch (ExecutionException e) {
+      throw onExecutionException(e);
     }
   }
 
@@ -50,8 +39,8 @@ public final class AggregationSession implements AutoCloseable {
   public byte[] serialize() {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
       return serialize(scopedHandle.get());
-    } catch (AggregationException e) {
-      throw onAggregationException(e);
+    } catch (ExecutionException e) {
+      throw onExecutionException(e);
     }
   }
 
@@ -59,8 +48,8 @@ public final class AggregationSession implements AutoCloseable {
   public byte[] report() {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
       return runReport(scopedHandle.get());
-    } catch (AggregationException e) {
-      throw onAggregationException(e);
+    } catch (ExecutionException e) {
+      throw onExecutionException(e);
     }
   }
 
@@ -73,20 +62,20 @@ public final class AggregationSession implements AutoCloseable {
   private final NativeHandle sessionHandle;
   private final byte[] configuration;
 
-  private AggregationSession(long handle, byte[] configuration) {
+  public AggregationSession(long handle, byte[] configuration) {
     checkArgument(handle != 0);
     this.sessionHandle = new NativeHandle(handle);
     this.configuration = configuration;
   }
 
-  /// Exception handlers that catch AggregationException should call this method in order to convert
+  /// Exception handlers that catch ExecutionException should call this method in order to convert
   /// them to a generic IllegalStateException.
-  private static IllegalStateException onAggregationException(AggregationException e) {
+  private static IllegalStateException onExecutionException(ExecutionException e) {
     return new IllegalStateException("Native aggregation session exception", e);
   }
 
   /// Closes the session, releasing resources. This must be run in the same thread as create.
-  /// @throws IllegalStateException with a wrapped AggregationException if closing was not
+  /// @throws IllegalStateException with a wrapped ExecutionException if closing was not
   /// successful.
   @Override
   public void close() {
@@ -95,8 +84,8 @@ public final class AggregationSession implements AutoCloseable {
     }
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
       closeNative(scopedHandle.release());
-    } catch (AggregationException e) {
-      throw onAggregationException(e);
+    } catch (ExecutionException e) {
+      throw onExecutionException(e);
     }
   }
 
@@ -106,29 +95,22 @@ public final class AggregationSession implements AutoCloseable {
 
   // Native API
   // ==========
-
-  /// Starts a session based on the given plan, returning a handle for it. */
-  static native long createNativeFromByteArray(byte[] plan) throws AggregationException;
-
   /// CAREFUL: don't make the following native calls static because it can cause a race condition
   /// between the native execution and the object finalize() call.
 
   /// Closes the session. The handle is not usable afterwards.
-  native void closeNative(long session) throws AggregationException;
+  native void closeNative(long session) throws ExecutionException;
 
   /// Accumulates the provided checkpoint using the native session.
-  native void runAccumulate(long session, byte[][] checkpoints) throws AggregationException;
+  native void runAccumulate(long session, byte[][] checkpoints) throws ExecutionException;
 
   /// Merges the serialized aggregator using the native session.
   native void mergeWith(long session, byte[] configuration, byte[][] serialized)
-      throws AggregationException;
+      throws ExecutionException;
 
   /// Serializes the internal state of the aggregator using the native session.
-  native byte[] serialize(long session) throws AggregationException;
+  native byte[] serialize(long session) throws ExecutionException;
 
   /// Creates a report using the native session.
-  native byte[] runReport(long session) throws AggregationException;
-
-  /// Extracts the configuration from the plan.
-  static native byte[] extractConfiguration(byte[] plan) throws AggregationException;
+  native byte[] runReport(long session) throws ExecutionException;
 }
