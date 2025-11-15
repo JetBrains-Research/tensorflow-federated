@@ -18,18 +18,19 @@ package(
 load("@rules_jvm_external//:defs.bzl", "java_export")
 load("@rules_java//java:java_library.bzl", "java_library")
 
-TFF_ENGINE_VERSION = "1.0.0"
-TFF_ENGINE_PACKAGE = "org.jetbrains:tff-engine-{os}:{version}"
+TFF_ENGINE_VERSION = "2.0.5"
+TFF_ENGINE_PACKAGE = "org.jetbrains:tff-engine-{platform}:{version}"
 
 java_library(
     name = "engine",
     srcs = [
         "AggregationSession.java",
         "NativeLibraryLoader.java",
-        "AggregationException.java",
+        "ExecutionException.java",
         "NativeHandle.java",
+        "PlanParser.java",
     ],
-    resources = [":copy_aggregation_jni_to_resources"],
+    resources = [":copy_execution_jni_to_resources"],
 	resource_strip_prefix = "engine/java/src/main/org/jetbrains/tff/engine",
     deps = [
         "@maven//:com_google_code_findbugs_jsr305",
@@ -38,45 +39,107 @@ java_library(
 )
 
 java_export(
-    name = "engine_package_osx",
+    name = "engine_package_osx_x86_64",
     exports = [":engine"],
-    maven_coordinates = TFF_ENGINE_PACKAGE.format(os="osx", version=TFF_ENGINE_VERSION),
+    maven_coordinates = TFF_ENGINE_PACKAGE.format(platform="osx-x86_64", version=TFF_ENGINE_VERSION),
+    target_compatible_with = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+    ],
 )
 
 java_export(
-    name = "engine_package_linux",
+    name = "engine_package_osx_aarch64",
     exports = [":engine"],
-    maven_coordinates = TFF_ENGINE_PACKAGE.format(os="linux", version=TFF_ENGINE_VERSION),
+    maven_coordinates = TFF_ENGINE_PACKAGE.format(platform="osx-aarch64", version=TFF_ENGINE_VERSION),
+    target_compatible_with = [
+        "@platforms//os:macos",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
+java_export(
+    name = "engine_package_linux_x86_64",
+    exports = [":engine"],
+    maven_coordinates = TFF_ENGINE_PACKAGE.format(platform="linux-x86_64", version=TFF_ENGINE_VERSION),
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+java_export(
+    name = "engine_package_linux_aarch64",
+    exports = [":engine"],
+    maven_coordinates = TFF_ENGINE_PACKAGE.format(platform="linux-aarch64", version=TFF_ENGINE_VERSION),
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
+config_setting(
+    name = "macos_x86_64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "macos_aarch64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:aarch64",
+    ],
+)
+
+config_setting(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+config_setting(
+    name = "linux_aarch64",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:aarch64",
+    ],
 )
 
 alias(
     name = "publish",
     actual = select({
-        "@platforms//os:macos": ":engine_package_osx.publish",
-        "@platforms//os:linux": ":engine_package_linux.publish",
+        ":macos_x86_64": ":engine_package_osx_x86_64.publish",
+        ":macos_aarch64": ":engine_package_osx_aarch64.publish",
+        ":linux_x86_64": ":engine_package_linux_x86_64.publish",
+        ":linux_aarch64": ":engine_package_linux_aarch64.publish",
     }),
 )
 
 genrule(
-    name = "copy_aggregation_jni_to_resources_dylib",
-    srcs = ["//engine/cc/aggregation:aggregation-jni"],
-    outs = ["libaggregation-jni.dylib"],
+    name = "copy_execution_jni_to_resources_dylib",
+    srcs = ["//engine/cc/execution:execution-jni"],
+    outs = ["libexecution-jni.dylib"],
     cmd = "cp $< $@",
     target_compatible_with = ["@platforms//os:macos"],
 )
 
 genrule(
-    name = "copy_aggregation_jni_to_resources_so",
-    srcs = ["//engine/cc/aggregation:aggregation-jni"],
-    outs = ["libaggregation-jni.so"],
+    name = "copy_execution_jni_to_resources_so",
+    srcs = ["//engine/cc/execution:execution-jni"],
+    outs = ["libexecution-jni.so"],
     cmd = "cp $< $@",
     target_compatible_with = ["@platforms//os:linux"],
 )
 
 alias(
-    name = "copy_aggregation_jni_to_resources",
+    name = "copy_execution_jni_to_resources",
     actual = select({
-        "@platforms//os:macos": ":copy_aggregation_jni_to_resources_dylib",
-        "@platforms//os:linux": ":copy_aggregation_jni_to_resources_so",
+        "@platforms//os:macos": ":copy_execution_jni_to_resources_dylib",
+        "@platforms//os:linux": ":copy_execution_jni_to_resources_so",
     }),
 )

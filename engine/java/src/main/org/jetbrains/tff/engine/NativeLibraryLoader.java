@@ -7,13 +7,13 @@ import java.nio.file.StandardCopyOption;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * This class is used to load the Engine TFF Aggregation shared library from within the jar.
+ * This class is used to load the Engine TFF Execution shared library from within the jar.
  * The shared library is extracted to a temp folder and loaded from there.
  */
 public class NativeLibraryLoader {
   //singleton
   private static final NativeLibraryLoader instance = new NativeLibraryLoader();
-  private static final String LIBRARY_NAME = "libaggregation-jni";
+  private static final String LIBRARY_NAME = "libexecution-jni";
   private static final String sharedLibraryName = LIBRARY_NAME + getOsExtension();
 
   private enum LibraryState {
@@ -53,13 +53,13 @@ public class NativeLibraryLoader {
         System.load(loadLibraryFromJarToTemp(tmpDir).getAbsolutePath());
       } catch (final IOException e) {
         libraryLoaded.set(LibraryState.NOT_LOADED);
-        throw new RuntimeException("Unable to load the TFF Aggregation JNI shared library", e);
+        throw new RuntimeException("Unable to load the TFF Execution JNI shared library", e);
       }
 
       libraryLoaded.set(LibraryState.LOADED);
     } else {
       if (DEBUG_LOADING) {
-        System.out.println("Another thread is loading the TFF Aggregation JNI shared library, waiting...");
+        System.out.println("Another thread is loading the TFF Execution JNI shared library, waiting...");
       }
 
       waitForLibraryToBeLoaded();
@@ -78,13 +78,13 @@ public class NativeLibraryLoader {
 
         if (waited >= timeout) {
           throw new RuntimeException(
-              "Exceeded timeout whilst trying to load the TFF Aggregation JNI shared library");
+              "Exceeded timeout whilst trying to load the TFF Execution JNI shared library");
         }
       }
     } catch (final InterruptedException e) {
       // restore interrupted status
       Thread.currentThread().interrupt();
-      throw new RuntimeException("Interrupted whilst trying to load the TFF Aggregation JNI shared library", e);
+      throw new RuntimeException("Interrupted whilst trying to load the TFF Execution JNI shared library", e);
     }
   }
 
@@ -92,7 +92,7 @@ public class NativeLibraryLoader {
     // create a temporary file to copy the library to
     final File temp;
     if (tmpDir == null || tmpDir.isEmpty()) {
-      temp = File.createTempFile("libaggregation-jni", getOsExtension());
+      temp = File.createTempFile(LIBRARY_NAME, getOsExtension());
     } else {
       final File parentDir = new File(tmpDir);
       if (!parentDir.exists()) {

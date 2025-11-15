@@ -62,7 +62,7 @@ alias(
 )
 
 cc_binary(
-    name = "aggregation-jni",
+    name = "execution-jni",
     linkshared = 1,
     linkstatic = 1,
     deps = [":native"],
