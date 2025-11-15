@@ -1,6 +1,10 @@
 package org.jetbrains.tff.engine;
 
 public class PlanParser {
+  static {
+    NativeLibraryLoader.getInstance().loadLibrary();
+  }
+
   private final byte[] plan;
 
   public PlanParser(byte[] plan) {

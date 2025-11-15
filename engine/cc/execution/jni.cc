@@ -24,8 +24,8 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_parser_factory.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.h"
 
-#define JFUN(METHOD_NAME) \
-  Java_org_jetbrains_tff_engine_AggregationSession_##METHOD_NAME
+#define JFUN(CLASS_NAME, METHOD_NAME) \
+  Java_org_jetbrains_tff_engine_##CLASS_NAME##_##METHOD_NAME
 
 constexpr const char* EXE_EXCEPTION_CLASS = "org/jetbrains/tff/engine/ExecutionException";
 
@@ -150,8 +150,8 @@ ExtractClientOnlyPlan(const engine::tff::Plan& plan) {
 // JNI bindings
 // ============
 
-extern "C" JNIEXPORT jlong JNICALL JFUN(createAggregationSessionHandle)(
-    JNIEnv* env, jclass, jbyteArray configurationByteArray) {
+extern "C" JNIEXPORT jlong JNICALL JFUN(PlanParser, createAggregationSessionHandle)(
+    JNIEnv* env, jobject, jbyteArray configurationByteArray) {
   auto config = jni::ParseProtoFromJByteArray<Configuration>(env, configurationByteArray);
   if (!config.ok()) {
     ThrowExecutionException(env, config.status());
@@ -167,9 +167,9 @@ extern "C" JNIEXPORT jlong JNICALL JFUN(createAggregationSessionHandle)(
   return reinterpret_cast<jlong>(result->release());
 }
 
-extern "C" JNIEXPORT void JNICALL JFUN(mergeWith)(
+extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, mergeWith)(
   JNIEnv* env,
-  jclass,
+  jobject,
   jlong handle,
   jbyteArray configurationByteArray,
   jobjectArray serializedStates
@@ -218,7 +218,7 @@ extern "C" JNIEXPORT void JNICALL JFUN(mergeWith)(
 // Note: This method consumes (and destroys) the Aggregation session.  After
 // this method is called, the caller should never re-use the Aggregation
 // session.
-extern "C" JNIEXPORT void JNICALL JFUN(closeNative)(JNIEnv* env, jobject obj, jlong handle) {
+extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, closeNative)(JNIEnv* env, jobject obj, jlong handle) {
   auto aggregator = AsAggregator(handle);
   if (!aggregator.ok()) {
     ThrowExecutionException(env, aggregator.status());
@@ -228,9 +228,10 @@ extern "C" JNIEXPORT void JNICALL JFUN(closeNative)(JNIEnv* env, jobject obj, jl
   delete aggregator.value();
 }
 
-extern "C" JNIEXPORT void JNICALL JFUN(runAccumulate)(
+extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, runAccumulate)(
   JNIEnv* env,
-  jclass, jlong handle,
+  jobject,
+  jlong handle,
   jobjectArray checkpoints
 ) {
   auto aggregator = AsAggregator(handle);
@@ -274,9 +275,9 @@ extern "C" JNIEXPORT void JNICALL JFUN(runAccumulate)(
   return;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL JFUN(runReport)(
+extern "C" JNIEXPORT jbyteArray JNICALL JFUN(AggregationSession, runReport)(
   JNIEnv* env,
-  jclass,
+  jobject,
   jlong handle
 ) {
   auto aggregator = AsAggregator(handle);
@@ -316,9 +317,9 @@ extern "C" JNIEXPORT jbyteArray JNICALL JFUN(runReport)(
   return ret;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL JFUN(serialize)(
+extern "C" JNIEXPORT jbyteArray JNICALL JFUN(AggregationSession, serialize)(
   JNIEnv* env,
-  jclass,
+  jobject,
   jlong handle
 ) {
   auto aggregator = AsAggregator(handle);
@@ -350,9 +351,9 @@ extern "C" JNIEXPORT jbyteArray JNICALL JFUN(serialize)(
   return byteArray;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL JFUN(extractConfiguration)(
+extern "C" JNIEXPORT jbyteArray JNICALL JFUN(PlanParser, extractConfiguration)(
   JNIEnv* env,
-  jclass,
+  jobject,
   jbyteArray planByteArray
 ) {
   const auto plan = jni::ParseProtoFromJByteArray<engine::tff::Plan>(env, planByteArray);
@@ -376,9 +377,9 @@ extern "C" JNIEXPORT jbyteArray JNICALL JFUN(extractConfiguration)(
   return *result;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL JFUN(createClientPhase)(
+extern "C" JNIEXPORT jbyteArray JNICALL JFUN(PlanParser, createClientPhase)(
   JNIEnv* env,
-  jclass,
+  jobject,
   jbyteArray planByteArray,
   jlong iterationNumber
 ) {

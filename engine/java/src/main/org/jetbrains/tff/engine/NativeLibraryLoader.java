@@ -92,7 +92,7 @@ public class NativeLibraryLoader {
     // create a temporary file to copy the library to
     final File temp;
     if (tmpDir == null || tmpDir.isEmpty()) {
-      temp = File.createTempFile("libexecution-jni", getOsExtension());
+      temp = File.createTempFile(LIBRARY_NAME, getOsExtension());
     } else {
       final File parentDir = new File(tmpDir);
       if (!parentDir.exists()) {
