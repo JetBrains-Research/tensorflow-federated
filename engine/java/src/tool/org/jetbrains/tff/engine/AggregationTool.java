@@ -30,7 +30,8 @@ public class AggregationTool {
         }
 
         // Create and run AggregationSession
-        AggregationSession session = AggregationSession.createFromByteArray(planBytes);
+        var parser = new PlanParser(planBytes);
+        AggregationSession session = parser.createAggregationSession();
         session.accumulate(checkpoints);
         byte[] aggregatedCheckpoint = session.report();
 
