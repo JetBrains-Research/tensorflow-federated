@@ -17,6 +17,8 @@
 #include <jni.h>
 #include "absl/status/status.h"
 #include "util.h"
+#include "prepare_session.h"
+#include "result_session.h"
 #include "engine/cc/execution/plan.pb.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/checkpoint_aggregator.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/protocol/configuration.pb.h"
@@ -52,13 +54,28 @@ std::string Message(const absl::Status& status) {
   return std::string(status.message());
 }
 
-// @warning: client-side must check handle != 0
 absl::StatusOr<CheckpointAggregator*> AsAggregator(jlong handle) {
   if (handle == 0) {
     return absl::InvalidArgumentError("Invalid session handle (session closed?)");
   }
 
   return reinterpret_cast<CheckpointAggregator*>(handle);
+}
+
+absl::StatusOr<PrepareSessionNative*> AsPrepareSessionNative(jlong handle) {
+  if (handle == 0) {
+    return absl::InvalidArgumentError("Invalid session handle (session closed?)");
+  }
+
+  return reinterpret_cast<PrepareSessionNative*>(handle);
+}
+
+absl::StatusOr<ResultSessionNative*> AsResultSessionNative(jlong handle) {
+  if (handle == 0) {
+    return absl::InvalidArgumentError("Invalid session handle (session closed?)");
+  }
+
+  return reinterpret_cast<ResultSessionNative*>(handle);
 }
 
 absl::StatusOr<IntrinsicArg> ConvertIntrinsicArg(const engine::tff::ServerAggregationConfig_IntrinsicArg& arg) {
@@ -147,9 +164,6 @@ ExtractClientOnlyPlan(const engine::tff::Plan& plan) {
 
 }  // namespace
 
-// JNI bindings
-// ============
-
 extern "C" JNIEXPORT jlong JNICALL JFUN(PlanParser, createAggregationSessionHandle)(
     JNIEnv* env, jobject, jbyteArray configurationByteArray) {
   auto config = jni::ParseProtoFromJByteArray<Configuration>(env, configurationByteArray);
@@ -165,6 +179,113 @@ extern "C" JNIEXPORT jlong JNICALL JFUN(PlanParser, createAggregationSessionHand
   }
 
   return reinterpret_cast<jlong>(result->release());
+}
+
+extern "C" JNIEXPORT jlong JNICALL JFUN(PlanParser, createPrepareSessionHandle)(
+  JNIEnv* env, jobject, jbyteArray planByteArray) {
+  auto plan = jni::ParseProtoFromJByteArray<engine::tff::Plan>(env, planByteArray);
+  if (!plan.ok()) {
+    ThrowExecutionException(env, plan.status());
+    return {};
+  }
+
+  if (!plan->has_server_graph_prepare_bytes()) {
+    ThrowExecutionException(env, absl::InvalidArgumentError("Plan does not contain server_graph_prepare_bytes"));
+    return {};
+  }
+
+  ::tensorflow::GraphDef graph;
+  if (!plan->server_graph_prepare_bytes().UnpackTo(&graph)) {
+    ThrowExecutionException(env, absl::InvalidArgumentError("Failed to unpack GraphDef from server_graph_prepare_bytes"));
+    return {};
+  }
+
+  const auto router = plan->phase(0).server_phase_v2().prepare_router();
+  const auto spec = plan->phase(0).server_phase_v2().tensorflow_spec_prepare();
+  auto session = PrepareSessionNative::Create(std::move(graph), spec, router);
+  return reinterpret_cast<jlong>(session->release());
+}
+
+extern "C" JNIEXPORT jlong JNICALL JFUN(PlanParser, createResultSessionHandle)(
+  JNIEnv* env, jobject, jbyteArray planByteArray) {
+  auto plan = jni::ParseProtoFromJByteArray<engine::tff::Plan>(env, planByteArray);
+  if (!plan.ok()) {
+    ThrowExecutionException(env, plan.status());
+    return {};
+  }
+
+  if (!plan->has_server_graph_result_bytes()) {
+    ThrowExecutionException(env, absl::InvalidArgumentError("Plan does not contain server_graph_result_bytes"));
+    return {};
+  }
+
+  ::tensorflow::GraphDef graph;
+  if (!plan->server_graph_result_bytes().UnpackTo(&graph)) {
+    ThrowExecutionException(env, absl::InvalidArgumentError("Failed to unpack GraphDef from server_graph_prepare_bytes"));
+    return {};
+  }
+
+  const auto router = plan->phase(0).server_phase_v2().result_router();
+  const auto spec = plan->phase(0).server_phase_v2().tensorflow_spec_result();
+  auto session = ResultSessionNative::Create(std::move(graph), spec, router);
+  return reinterpret_cast<jlong>(session->release());
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL JFUN(PlanParser, extractConfiguration)(
+  JNIEnv* env,
+  jobject,
+  jbyteArray planByteArray
+) {
+  const auto plan = jni::ParseProtoFromJByteArray<engine::tff::Plan>(env, planByteArray);
+  if (!plan.ok()) {
+    ThrowExecutionException(env, plan.status());
+    return {};
+  }
+
+  const auto config = ExtractAggregationConfigurationFromPlan(*plan);
+  if (!config.ok()) {
+    ThrowExecutionException(env, config.status());
+    return {};
+  }
+
+  const auto result = jni::SerializeProtoToJByteArray(env, *config);
+  if (!result.ok()) {
+    ThrowExecutionException(env, result.status());
+    return {};
+  }
+
+  return *result;
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL JFUN(PlanParser, createClientPhase)(
+  JNIEnv* env,
+  jobject,
+  jbyteArray planByteArray,
+  jlong iterationNumber
+) {
+  const auto plan = jni::ParseProtoFromJByteArray<engine::tff::Plan>(env, planByteArray);
+  if (!plan.ok()) {
+    ThrowExecutionException(env, plan.status());
+    return {};
+  }
+
+  auto client_only_plan = ExtractClientOnlyPlan(*plan);
+  if (!client_only_plan.ok()) {
+    ThrowExecutionException(env, client_only_plan.status());
+    return {};
+  }
+
+  if (iterationNumber >= 0) {
+    client_only_plan->mutable_client_persisted_data()->set_min_sep_policy_index(static_cast<int64_t>(iterationNumber));
+  }
+
+  const auto result = jni::SerializeProtoToJByteArray(env, *client_only_plan);
+  if (!result.ok()) {
+    ThrowExecutionException(env, result.status());
+    return {};
+  }
+
+  return *result;
 }
 
 extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, mergeWith)(
@@ -215,9 +336,6 @@ extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, mergeWith)(
   return;
 }
 
-// Note: This method consumes (and destroys) the Aggregation session.  After
-// this method is called, the caller should never re-use the Aggregation
-// session.
 extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, closeNative)(JNIEnv* env, jobject obj, jlong handle) {
   auto aggregator = AsAggregator(handle);
   if (!aggregator.ok()) {
@@ -351,59 +469,104 @@ extern "C" JNIEXPORT jbyteArray JNICALL JFUN(AggregationSession, serialize)(
   return byteArray;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL JFUN(PlanParser, extractConfiguration)(
+extern "C" JNIEXPORT void JNICALL JFUN(PrepareSession, runPrepare)(
   JNIEnv* env,
   jobject,
-  jbyteArray planByteArray
+  jlong handle,
+  jstring server_ckpt_path,
+  jstring client_ckpt_path,
+  jstring intermediate_ckpt_path
 ) {
-  const auto plan = jni::ParseProtoFromJByteArray<engine::tff::Plan>(env, planByteArray);
-  if (!plan.ok()) {
-    ThrowExecutionException(env, plan.status());
-    return {};
+  auto session = AsPrepareSessionNative(handle);
+  if (!session.ok()) {
+    ThrowExecutionException(env, session.status());
+    return;
   }
 
-  const auto config = ExtractAggregationConfigurationFromPlan(*plan);
-  if (!config.ok()) {
-    ThrowExecutionException(env, config.status());
-    return {};
+  const auto server_ckpt_path_str = jni::JstringToString(env, server_ckpt_path);
+  if (!server_ckpt_path_str.ok()) {
+    ThrowExecutionException(env, server_ckpt_path_str.status());
+    return;
   }
 
-  const auto result = jni::SerializeProtoToJByteArray(env, *config);
+  const auto client_ckpt_path_str = jni::JstringToString(env, client_ckpt_path);
+  if (!client_ckpt_path_str.ok()) {
+    ThrowExecutionException(env, client_ckpt_path_str.status());
+    return;
+  }
+
+  const auto intermediate_ckpt_path_str = jni::JstringToString(env, intermediate_ckpt_path);
+  if (!intermediate_ckpt_path_str.ok()) {
+    ThrowExecutionException(env, intermediate_ckpt_path_str.status());
+    return;
+  }
+
+  const auto result = session.value()->Run(
+    server_ckpt_path_str.value(),
+    client_ckpt_path_str.value(),
+    intermediate_ckpt_path_str.value()
+  );
+
   if (!result.ok()) {
-    ThrowExecutionException(env, result.status());
-    return {};
+    ThrowExecutionException(env, result);
+    return;
   }
-
-  return *result;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL JFUN(PlanParser, createClientPhase)(
+extern "C" JNIEXPORT void JNICALL JFUN(PrepareSession, closeNative)(JNIEnv* env, jobject obj, jlong handle) {
+  auto session = AsPrepareSessionNative(handle);
+  if (!session.ok()) {
+    ThrowExecutionException(env, session.status());
+    return;
+  }
+
+  delete session.value();
+}
+
+extern "C" JNIEXPORT void JNICALL JFUN(ResultSession, runResult)(
   JNIEnv* env,
   jobject,
-  jbyteArray planByteArray,
-  jlong iterationNumber
+  jlong handle,
+  jstring intermediate_ckpt_path,
+  jstring aggregated_ckpt_path,
+  jstring server_ckpt_path
 ) {
-  const auto plan = jni::ParseProtoFromJByteArray<engine::tff::Plan>(env, planByteArray);
-  if (!plan.ok()) {
-    ThrowExecutionException(env, plan.status());
-    return {};
+  auto session = AsResultSessionNative(handle);
+  if (!session.ok()) {
+    ThrowExecutionException(env, session.status());
+    return;
   }
 
-  auto client_only_plan = ExtractClientOnlyPlan(*plan);
-  if (!client_only_plan.ok()) {
-    ThrowExecutionException(env, client_only_plan.status());
-    return {};
+  const auto intermediate_ckpt_path_str = jni::JstringToString(env, intermediate_ckpt_path);
+  if (!intermediate_ckpt_path_str.ok()) {
+    ThrowExecutionException(env, intermediate_ckpt_path_str.status());
+    return;
+  }
+  const auto aggregated_ckpt_path_str = jni::JstringToString(env, aggregated_ckpt_path);
+  if (!aggregated_ckpt_path_str.ok()) {
+    ThrowExecutionException(env, aggregated_ckpt_path_str.status());
+    return;
   }
 
-  if (iterationNumber >= 0) {
-    client_only_plan->mutable_client_persisted_data()->set_min_sep_policy_index(static_cast<int64_t>(iterationNumber));
+  const auto server_ckpt_path_str = jni::JstringToString(env, server_ckpt_path);
+  if (!server_ckpt_path_str.ok()) {
+    ThrowExecutionException(env, server_ckpt_path_str.status());
+    return;
   }
 
-  const auto result = jni::SerializeProtoToJByteArray(env, *client_only_plan);
+  const auto result = session.value()->Run(intermediate_ckpt_path_str.value(), aggregated_ckpt_path_str.value(), server_ckpt_path_str.value());
   if (!result.ok()) {
-    ThrowExecutionException(env, result.status());
-    return {};
+    ThrowExecutionException(env, result);
+    return;
+  }
+}
+
+extern "C" JNIEXPORT void JNICALL JFUN(ResultSession, closeNative)(JNIEnv* env, jobject obj, jlong handle) {
+  auto session = AsResultSessionNative(handle);
+  if (!session.ok()) {
+    ThrowExecutionException(env, session.status());
+    return;
   }
 
-  return *result;
+  delete session.value();
 }
