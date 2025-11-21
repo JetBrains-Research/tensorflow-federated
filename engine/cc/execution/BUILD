@@ -22,9 +22,13 @@ cc_library(
     name = "native",
     srcs = [
         "jni.cc",
+        "prepare_session.cc",
+        "result_session.cc",
     ],
     hdrs = [
         "util.h",
+        "prepare_session.h",
+        "result_session.h",
     ],
     copts = [
         "-Wno-narrowing",
@@ -41,6 +45,8 @@ cc_library(
         "@com_google_absl//absl/strings:cord",
         "@com_google_protobuf//:protobuf",
         "@org_tensorflow//tensorflow/core:protos_all_cc",
+        "@org_tensorflow//tensorflow/core:framework",
+		"@org_tensorflow//tensorflow/core:tensorflow",
         "//tensorflow_federated/cc/core/impl/aggregation/protocol:checkpoint_aggregator",
         "//tensorflow_federated/cc/core/impl/aggregation/tensorflow:tensorflow_checkpoint_builder_factory",
         "//tensorflow_federated/cc/core/impl/aggregation/tensorflow:tensorflow_checkpoint_parser_factory",

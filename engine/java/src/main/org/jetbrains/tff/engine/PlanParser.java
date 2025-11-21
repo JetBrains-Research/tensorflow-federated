@@ -11,7 +11,6 @@ public class PlanParser {
     this.plan = plan;
   }
 
-  /// Creates a new session, based on the plan.
   public AggregationSession createAggregationSession() {
     try {
       byte[] configuration = extractConfiguration(plan);
@@ -22,7 +21,24 @@ public class PlanParser {
     }
   }
 
-  /// Builds the client phase message with respect of iteration number.
+  public PrepareSession createPrepareSession() {
+    try {
+      long sessionHandle = createPrepareSessionHandle(plan);
+      return new PrepareSession(sessionHandle);
+    } catch (ExecutionException e) {
+      throw onExecutionException(e);
+    }
+  }
+
+  public ResultSession createResultSession() {
+    try {
+      long sessionHandle = createResultSessionHandle(plan);
+      return new ResultSession(sessionHandle);
+    } catch (ExecutionException e) {
+      throw onExecutionException(e);
+    }
+  }
+
   public byte[] createClientPhase(long iterationNumber) {
     try {
       return createClientPhase(plan, iterationNumber);
@@ -40,12 +56,9 @@ public class PlanParser {
   /// CAREFUL: don't make the following native calls static because it can cause a race condition
   /// between the native execution and the object finalize() call.
 
-  /// Starts a session based on the given plan, returning a handle for it. */
   native long createAggregationSessionHandle(byte[] plan) throws ExecutionException;
-
-  /// Builds the client phase message with respect of iteration number.
+  native long createPrepareSessionHandle(byte[] plan) throws ExecutionException;
+  native long createResultSessionHandle(byte[] plan) throws ExecutionException;
   native byte[] createClientPhase(byte[] plan, long iterationNumber) throws ExecutionException;
-
-  /// Extracts the configuration from the plan.
   native byte[] extractConfiguration(byte[] plan) throws ExecutionException;
 }

@@ -15,9 +15,7 @@ package org.jetbrains.tff.engine;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
-/// A simple wrapper around the checkpoint aggregator.
 public final class AggregationSession implements AutoCloseable {
-  /// Accumulates the list of checkpoint via nested tensor aggregators in memory.
   public void accumulate(byte[][] checkpoints) {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
       runAccumulate(scopedHandle.get(), checkpoints);
@@ -26,7 +24,6 @@ public final class AggregationSession implements AutoCloseable {
     }
   }
 
-  /// Merges the list of serialized aggregators in memory.
   public void mergeWith(byte[][] serialized) {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
       mergeWith(scopedHandle.get(), configuration, serialized);
@@ -35,7 +32,6 @@ public final class AggregationSession implements AutoCloseable {
     }
   }
 
-  /// Serialized aggregator in memory to a byte[].
   public byte[] serialize() {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
       return serialize(scopedHandle.get());
@@ -44,7 +40,6 @@ public final class AggregationSession implements AutoCloseable {
     }
   }
 
-  /// Builds a report from the session.
   public byte[] report() {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
       return runReport(scopedHandle.get());
@@ -53,7 +48,6 @@ public final class AggregationSession implements AutoCloseable {
     }
   }
 
-  /// Safety net finalizer for cleanup of the wrapped native resource.
   @Override
   protected void finalize() throws Throwable {
     assert !sessionHandle.isValid();
@@ -68,22 +62,17 @@ public final class AggregationSession implements AutoCloseable {
     this.configuration = configuration;
   }
 
-  /// Exception handlers that catch ExecutionException should call this method in order to convert
-  /// them to a generic IllegalStateException.
   private static IllegalStateException onExecutionException(ExecutionException e) {
     return new IllegalStateException("Native aggregation session exception", e);
   }
 
-  /// Closes the session, releasing resources. This must be run in the same thread as create.
-  /// @throws IllegalStateException with a wrapped ExecutionException if closing was not
-  /// successful.
   @Override
   public void close() {
     if (!sessionHandle.isValid()) {
       return;
     }
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
-      closeNative(scopedHandle.release());
+      closeAggregationSession(scopedHandle.release());
     } catch (ExecutionException e) {
       throw onExecutionException(e);
     }
@@ -98,19 +87,11 @@ public final class AggregationSession implements AutoCloseable {
   /// CAREFUL: don't make the following native calls static because it can cause a race condition
   /// between the native execution and the object finalize() call.
 
-  /// Closes the session. The handle is not usable afterwards.
-  native void closeNative(long session) throws ExecutionException;
-
-  /// Accumulates the provided checkpoint using the native session.
+  native void closeAggregationSession(long session) throws ExecutionException;
   native void runAccumulate(long session, byte[][] checkpoints) throws ExecutionException;
-
-  /// Merges the serialized aggregator using the native session.
   native void mergeWith(long session, byte[] configuration, byte[][] serialized)
       throws ExecutionException;
 
-  /// Serializes the internal state of the aggregator using the native session.
   native byte[] serialize(long session) throws ExecutionException;
-
-  /// Creates a report using the native session.
   native byte[] runReport(long session) throws ExecutionException;
 }

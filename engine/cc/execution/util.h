@@ -68,6 +68,26 @@ static inline absl::StatusOr<std::string> JbyteArrayToString(JNIEnv* env, jbyteA
   return std::string(buf, len);
 }
 
+static inline absl::StatusOr<std::string> JstringToString(JNIEnv* env, jstring jstr) {
+  if (jstr == nullptr) {
+    return absl::InvalidArgumentError("jstring is null");
+  }
+
+  const char* utf_chars = env->GetStringUTFChars(jstr, nullptr);
+  if (utf_chars == nullptr) {
+    return absl::InternalError("Failed to get UTF chars from jstring");
+  }
+
+  std::string result(utf_chars);
+  env->ReleaseStringUTFChars(jstr, utf_chars);
+
+  if (auto status = CheckJniException(env, "JstringToString"); !status.ok()) {
+    return status;
+  }
+
+  return result;
+}
+
 // Throws an exception of the given class. The exception is expected to have
 // a two-argument constructor, where the first argument represents a canonical
 // error code, and the second argument is the exception message.
