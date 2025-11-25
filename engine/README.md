@@ -53,7 +53,7 @@ checkpoint_tool parse model.ckpt > checkpoint.json
 
 ### Processing Checkpoints with JNI Tool(Java)
 Sample checkpoints and plans could be found in `engine/cc/tools/data`
-1. Build agg_tool:
+1. Build jni_tool:
 ```sh
 bazel build //engine/java/src/tool/org/jetbrains/tff/engine:jni_tool_deploy.jar
 ```
