@@ -266,3 +266,34 @@ build --java_language_version=17
 build --java_runtime_version=remotejdk_17
 build --tool_java_language_version=17
 build --tool_java_runtime_version=remotejdk_17
+
+# ----------------------------------------------------------------------------------------------------------------------
+# WASM
+# ----------------------------------------------------------------------------------------------------------------------
+build:wasm --crosstool_top=@emsdk//emscripten_toolchain:everything
+build:wasm --cpu=wasm
+build:wasm --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
+build:wasm --copt=-fno-exceptions
+# Disable problematic features for WASM
+build:wasm --define=no_tensorflow_py_deps=true
+build:wasm --copt=-DEMSCRIPTEN
+build:wasm --copt=-Wno-unused-function
+# Suppress WASM-specific warnings
+build:wasm --copt=-Wno-deprecated-non-prototype
+build:wasm --copt=-Wno-error=unused-function
+build:wasm --copt=-Wno-error=deprecated-non-prototype
+# Emscripten linker flags (using -s FLAG=VALUE format with quotes)
+build:wasm --linkopt="-s"
+build:wasm --linkopt="USE_PTHREADS=0"
+build:wasm --linkopt="-s"
+build:wasm --linkopt="ALLOW_MEMORY_GROWTH=1"
+build:wasm --linkopt="-s"
+build:wasm --linkopt="TOTAL_MEMORY=536870912"
+build:wasm --linkopt="-s"
+build:wasm --linkopt="INITIAL_MEMORY=268435456"
+build:wasm --linkopt="-s"
+build:wasm --linkopt="WASM=1"
+build:wasm --linkopt="-s"
+build:wasm --linkopt="EXPORTED_FUNCTIONS=['_main']"
+build:wasm --linkopt="-s"
+build:wasm --linkopt="EXPORTED_RUNTIME_METHODS=['cwrap']"

@@ -394,3 +394,19 @@ cc_library(
 )
 """,
 )
+
+http_archive(
+    name = "emsdk",
+    sha256 = "cb8cded78f6953283429d724556e89211e51ac4d871fcf38e0b32405ee248e91",
+    strip_prefix = "emsdk-3.1.44/bazel",
+    url = "https://github.com/emscripten-core/emsdk/archive/refs/tags/3.1.44.tar.gz",
+)
+
+load("@emsdk//:deps.bzl", emsdk_deps = "deps")
+emsdk_deps()
+
+load("@emsdk//:emscripten_deps.bzl", "emscripten_deps")
+emscripten_deps(emscripten_version = "3.1.44")
+
+load("@emsdk//:toolchains.bzl", "register_emscripten_toolchains")
+register_emscripten_toolchains()

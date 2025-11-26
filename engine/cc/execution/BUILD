@@ -17,6 +17,12 @@ package(
 )
 
 load("@org_tensorflow//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("@emsdk//emscripten_toolchain:wasm_cc_binary.bzl", "wasm_cc_binary")
+
+config_setting(
+    name = "wasm_build",
+    values = {"cpu": "wasm"},
+)
 
 cc_library(
     name = "native",
@@ -52,6 +58,40 @@ cc_library(
         "//tensorflow_federated/cc/core/impl/aggregation/tensorflow:tensorflow_checkpoint_parser_factory",
     ],
     alwayslink = 1,
+)
+
+cc_binary(
+    name = "wasm_implementation_bin",
+    srcs = [
+        "wasm.cc",
+        "prepare_session_wasm.cc",
+        "result_session_wasm.cc",
+        "prepare_session.h",
+        "result_session.h",
+    ],
+    copts = [
+        "-Wno-narrowing",
+        "-Wno-sign-compare",
+        "-Wno-overloaded-virtual",
+        "-Wno-unused-function",
+        "-Wno-deprecated-non-prototype",
+    ],
+    deps = [
+        ":plan_cc_proto",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_protobuf//:protobuf",
+        "@org_tensorflow//tensorflow/core:protos_all_cc",
+        # Excluded for WASM: checkpoint_aggregator (pulls in BoringSSL which doesn't compile for WASM)
+    ],
+)
+
+wasm_cc_binary(
+    name = "native-wasm",
+    cc_target = ":wasm_implementation_bin",
 )
 
 tf_proto_library(
