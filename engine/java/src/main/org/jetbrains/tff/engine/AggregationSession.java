@@ -16,9 +16,9 @@ package org.jetbrains.tff.engine;
 import static com.google.common.base.Preconditions.checkArgument;
 
 public final class AggregationSession implements AutoCloseable {
-  public void accumulate(byte[][] checkpoints) {
+  public void accumulate(String[] checkpointPaths) {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
-      runAccumulate(scopedHandle.get(), checkpoints);
+      runAccumulate(scopedHandle.get(), checkpointPaths);
     } catch (ExecutionException e) {
       throw onExecutionException(e);
     }
@@ -88,7 +88,7 @@ public final class AggregationSession implements AutoCloseable {
   /// between the native execution and the object finalize() call.
 
   native void closeAggregationSession(long session) throws ExecutionException;
-  native void runAccumulate(long session, byte[][] checkpoints) throws ExecutionException;
+  native void runAccumulate(long session, String[] checkpointPaths) throws ExecutionException;
   native void mergeWith(long session, byte[] configuration, byte[][] serialized)
       throws ExecutionException;
 

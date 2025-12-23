@@ -350,7 +350,7 @@ extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, runAccumulate)(
   JNIEnv* env,
   jobject,
   jlong handle,
-  jobjectArray checkpoints
+  jobjectArray checkpointPaths
 ) {
   auto aggregator = AsAggregator(handle);
   if (!aggregator.ok()) {
@@ -358,28 +358,27 @@ extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, runAccumulate)(
     return;
   }
 
-  const auto len = env->GetArrayLength(checkpoints);
+  const auto len = env->GetArrayLength(checkpointPaths);
   if (auto status = jni::CheckJniException(env, "Failed to get array length"); !status.ok()) {
     ThrowExecutionException(env, status);
     return;
   }
 
   for (int i = 0; i < len; i++) {
-    jbyteArray checkpoint = (jbyteArray)env->GetObjectArrayElement(checkpoints, i);
+    jstring checkpointPath = (jstring)env->GetObjectArrayElement(checkpointPaths, i);
     if (auto status = jni::CheckJniException(env, "GetObjectArrayElement"); !status.ok()) {
       ThrowExecutionException(env, status);
       return;
     }
 
-    auto checkpointBytes = jni::JbyteArrayToString(env, checkpoint);
-    if (!checkpointBytes.ok()) {
-      ThrowExecutionException(env, checkpointBytes.status());
+    auto checkpointPathStr = jni::JstringToString(env, checkpointPath);
+    if (!checkpointPathStr.ok()) {
+      ThrowExecutionException(env, checkpointPathStr.status());
       return;
     }
 
-    absl::Cord checkpointCord(std::move(checkpointBytes.value()));
     agg::TensorflowCheckpointParserFactory parser_factory;
-    auto parser = parser_factory.Create(checkpointCord);
+    auto parser = parser_factory.Create(absl::Cord(checkpointPathStr.value()));
     if (!parser.ok()) {
       ThrowExecutionException(env, parser.status());
       return;
