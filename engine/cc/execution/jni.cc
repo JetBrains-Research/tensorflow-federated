@@ -25,6 +25,7 @@
 #include "tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_builder_factory.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/tensorflow/tensorflow_checkpoint_parser_factory.h"
 #include "tensorflow_federated/cc/core/impl/aggregation/tensorflow/converters.h"
+#include "tensorflow_federated/cc/core/impl/aggregation/base/platform.h"
 
 #define JFUN(CLASS_NAME, METHOD_NAME) \
   Java_org_jetbrains_tff_engine_##CLASS_NAME##_##METHOD_NAME
@@ -293,7 +294,7 @@ extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, mergeWith)(
   jobject,
   jlong handle,
   jbyteArray configurationByteArray,
-  jobjectArray serializedStates
+  jobjectArray serializedStatePaths
 ) {
   auto aggregator = AsAggregator(handle);
   if (!aggregator.ok()) {
@@ -307,21 +308,30 @@ extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, mergeWith)(
     return;
   }
 
-  int len = env->GetArrayLength(serializedStates);
+  int len = env->GetArrayLength(serializedStatePaths);
   for (int i = 0; i < len; i++) {
-    jbyteArray serializedState = (jbyteArray)env->GetObjectArrayElement(serializedStates, i);
+    jstring serializedStatePath = (jstring)env->GetObjectArrayElement(serializedStatePaths, i);
     if (jni::CheckJniException(env, "GetObjectArrayElement") != absl::OkStatus()) {
       ThrowExecutionException(env,  absl::InternalError("Failed to get array element"));
       return;
     }
 
-    auto serializedStateStr = jni::JbyteArrayToString(env, serializedState);
-    if (!serializedStateStr.ok()) {
-      ThrowExecutionException(env, serializedStateStr.status());
+    auto serializedStatePathStr = jni::JstringToString(env, serializedStatePath);
+    if (!serializedStatePathStr.ok()) {
+      ThrowExecutionException(env, serializedStatePathStr.status());
       return;
     }
 
-    auto other_aggregator = CheckpointAggregator::Deserialize(config.value(), serializedStateStr.value());
+    auto serializedStateContent = tensorflow_federated::ReadFileToCord(serializedStatePathStr.value());
+    if (!serializedStateContent.ok()) {
+      ThrowExecutionException(env, serializedStateContent.status());
+      return;
+    }
+
+    std::string serializedStateStr;
+    absl::CopyCordToString(serializedStateContent.value(), &serializedStateStr);
+
+    auto other_aggregator = CheckpointAggregator::Deserialize(config.value(), serializedStateStr);
 
     if (!other_aggregator.ok()) {
       ThrowExecutionException(env, other_aggregator.status());
@@ -377,8 +387,14 @@ extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, runAccumulate)(
       return;
     }
 
+    auto checkpointContent = tensorflow_federated::ReadFileToCord(checkpointPathStr.value());
+    if (!checkpointContent.ok()) {
+      ThrowExecutionException(env, checkpointContent.status());
+      return;
+    }
+
     agg::TensorflowCheckpointParserFactory parser_factory;
-    auto parser = parser_factory.Create(absl::Cord(checkpointPathStr.value()));
+    auto parser = parser_factory.Create(checkpointContent.value());
     if (!parser.ok()) {
       ThrowExecutionException(env, parser.status());
       return;
@@ -392,14 +408,21 @@ extern "C" JNIEXPORT void JNICALL JFUN(AggregationSession, runAccumulate)(
   return;
 }
 
-extern "C" JNIEXPORT jbyteArray JNICALL JFUN(AggregationSession, runReport)(
+extern "C" JNIEXPORT jstring JNICALL JFUN(AggregationSession, runReport)(
   JNIEnv* env,
   jobject,
-  jlong handle
+  jlong handle,
+  jstring outputPath
 ) {
   auto aggregator = AsAggregator(handle);
   if (!aggregator.ok()) {
     ThrowExecutionException(env, aggregator.status());
+    return {};
+  }
+
+  auto outputPathStr = jni::JstringToString(env, outputPath);
+  if (!outputPathStr.ok()) {
+    ThrowExecutionException(env, outputPathStr.status());
     return {};
   }
 
@@ -417,21 +440,13 @@ extern "C" JNIEXPORT jbyteArray JNICALL JFUN(AggregationSession, runReport)(
     return {};
   }
 
-  std::string result;
-  absl::CopyCordToString(*res, &result);
-  jbyteArray ret = env->NewByteArray(result.length());
-  if (auto status = jni::CheckJniException(env, "NewByteArray"); !status.ok()) {
-    ThrowExecutionException(env, status);
+  auto writeStatus = tensorflow_federated::WriteCordToFile(outputPathStr.value(), *res);
+  if (!writeStatus.ok()) {
+    ThrowExecutionException(env, writeStatus);
     return {};
   }
 
-  env->SetByteArrayRegion(ret, 0, result.length(), reinterpret_cast<const jbyte*>(result.c_str()));
-  if (auto status = jni::CheckJniException(env, "SetByteArrayRegion"); !status.ok()) {
-    ThrowExecutionException(env, status);
-    return {};
-  }
-
-  return ret;
+  return outputPath;
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL JFUN(AggregationSession, serialize)(

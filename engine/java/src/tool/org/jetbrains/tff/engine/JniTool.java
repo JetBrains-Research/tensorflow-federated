@@ -46,13 +46,9 @@ public class JniTool {
         var parser = new PlanParser(planBytes);
         AggregationSession session = parser.createAggregationSession();
         session.accumulate(checkpointPaths);
-        byte[] aggregatedCheckpoint = session.report();
+        String resultPath = session.report(outputCkptPath);
 
-        try (FileOutputStream out = new FileOutputStream(outputCkptPath)) {
-            out.write(aggregatedCheckpoint);
-        }
-
-        System.out.println("Aggregated checkpoint written to: " + outputCkptPath);
+        System.out.println("Aggregated checkpoint written to: " + resultPath);
     }
 
     private static void Prepare(String[] args) throws Exception{

@@ -24,9 +24,9 @@ public final class AggregationSession implements AutoCloseable {
     }
   }
 
-  public void mergeWith(byte[][] serialized) {
+  public void mergeWith(String[] serializedStatePaths) {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
-      mergeWith(scopedHandle.get(), configuration, serialized);
+      mergeWith(scopedHandle.get(), configuration, serializedStatePaths);
     } catch (ExecutionException e) {
       throw onExecutionException(e);
     }
@@ -40,12 +40,16 @@ public final class AggregationSession implements AutoCloseable {
     }
   }
 
-  public byte[] report() {
+  public String report(String outputPath) {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
-      return runReport(scopedHandle.get());
+      return runReport(scopedHandle.get(), outputPath);
     } catch (ExecutionException e) {
       throw onExecutionException(e);
     }
+  }
+
+  public String report() {
+    return report("aggregated_result.ckpt");
   }
 
   @Override
@@ -89,9 +93,9 @@ public final class AggregationSession implements AutoCloseable {
 
   native void closeAggregationSession(long session) throws ExecutionException;
   native void runAccumulate(long session, String[] checkpointPaths) throws ExecutionException;
-  native void mergeWith(long session, byte[] configuration, byte[][] serialized)
+  native void mergeWith(long session, byte[] configuration, String[] serializedStatePaths)
       throws ExecutionException;
 
   native byte[] serialize(long session) throws ExecutionException;
-  native byte[] runReport(long session) throws ExecutionException;
+  native String runReport(long session, String outputPath) throws ExecutionException;
 }
