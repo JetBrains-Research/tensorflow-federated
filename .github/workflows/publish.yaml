@@ -37,9 +37,9 @@ jobs:
     # Only if:
     # * Repository is not a fork.
     # * Branch is `main` (for workflow_dispatch trigger).
-#    if: |
-#      github.repository == 'google-parfait/tensorflow-federated'
-#      && github.ref == 'refs/heads/main'
+    if: |
+      github.repository == 'google-parfait/tensorflow-federated'
+      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
