@@ -49,7 +49,7 @@ jobs:
     steps:
 
     - name: Checkout repository
-      uses: actions/checkout@v4.1.7
+      uses: actions/checkout@v6.0.1
 
     - name: Get the latest version
       env:
@@ -102,7 +102,7 @@ jobs:
     steps:
 
     - name: Checkout repository
-      uses: actions/checkout@v4.1.7
+      uses: actions/checkout@v6.0.1
       with:
         ref: ${{ needs.publish-release.outputs.release-tag }}
 
@@ -114,7 +114,7 @@ jobs:
         create_credentials_file: true
 
     - name: Set up bazel repository cache
-      uses: actions/cache@v4.0.2
+      uses: actions/cache@v4
       with:
         path: "~/.cache/bazel/"
         key: ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE') }}
@@ -154,7 +154,7 @@ jobs:
     steps:
 
     - name: Checkout repository
-      uses: actions/checkout@v4.1.7
+      uses: actions/checkout@v6.0.1
       with:
         ref: ${{ needs.publish-release.outputs.release-tag }}
 

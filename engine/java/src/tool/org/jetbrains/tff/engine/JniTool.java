@@ -39,20 +39,16 @@ public class JniTool {
         String outputCkptPath = args[3];
 
         byte[] planBytes = Files.readAllBytes(Paths.get(planPath));
-        byte[][] checkpoints = new byte[2][];
-        checkpoints[0] = Files.readAllBytes(Paths.get(leftCkptPath));
-        checkpoints[1] = Files.readAllBytes(Paths.get(rightCkptPath));
+        String[] checkpointPaths = new String[2];
+        checkpointPaths[0] = leftCkptPath;
+        checkpointPaths[1] = rightCkptPath;
 
         var parser = new PlanParser(planBytes);
         AggregationSession session = parser.createAggregationSession();
-        session.accumulate(checkpoints);
-        byte[] aggregatedCheckpoint = session.report();
+        session.accumulate(checkpointPaths);
+        String resultPath = session.report(outputCkptPath);
 
-        try (FileOutputStream out = new FileOutputStream(outputCkptPath)) {
-            out.write(aggregatedCheckpoint);
-        }
-
-        System.out.println("Aggregated checkpoint written to: " + outputCkptPath);
+        System.out.println("Aggregated checkpoint written to: " + resultPath);
     }
 
     private static void Prepare(String[] args) throws Exception{

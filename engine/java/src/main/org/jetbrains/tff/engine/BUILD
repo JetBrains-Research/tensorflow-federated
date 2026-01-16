@@ -18,7 +18,7 @@ package(
 load("@rules_jvm_external//:defs.bzl", "java_export")
 load("@rules_java//java:java_library.bzl", "java_library")
 
-TFF_ENGINE_VERSION = "3.0.0"
+TFF_ENGINE_VERSION = "3.0.1"
 TFF_ENGINE_PACKAGE = "org.jetbrains:tff-engine-{platform}:{version}"
 
 java_library(

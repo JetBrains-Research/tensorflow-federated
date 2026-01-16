@@ -16,17 +16,17 @@ package org.jetbrains.tff.engine;
 import static com.google.common.base.Preconditions.checkArgument;
 
 public final class AggregationSession implements AutoCloseable {
-  public void accumulate(byte[][] checkpoints) {
+  public void accumulate(String[] checkpointPaths) {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
-      runAccumulate(scopedHandle.get(), checkpoints);
+      runAccumulate(scopedHandle.get(), checkpointPaths);
     } catch (ExecutionException e) {
       throw onExecutionException(e);
     }
   }
 
-  public void mergeWith(byte[][] serialized) {
+  public void mergeWith(String[] serializedStatePaths) {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
-      mergeWith(scopedHandle.get(), configuration, serialized);
+      mergeWith(scopedHandle.get(), configuration, serializedStatePaths);
     } catch (ExecutionException e) {
       throw onExecutionException(e);
     }
@@ -40,12 +40,16 @@ public final class AggregationSession implements AutoCloseable {
     }
   }
 
-  public byte[] report() {
+  public String report(String outputPath) {
     try (NativeHandle.ScopedHandle scopedHandle = sessionHandle.acquire()) {
-      return runReport(scopedHandle.get());
+      return runReport(scopedHandle.get(), outputPath);
     } catch (ExecutionException e) {
       throw onExecutionException(e);
     }
+  }
+
+  public String report() {
+    return report("aggregated_result.ckpt");
   }
 
   @Override
@@ -88,10 +92,10 @@ public final class AggregationSession implements AutoCloseable {
   /// between the native execution and the object finalize() call.
 
   native void closeAggregationSession(long session) throws ExecutionException;
-  native void runAccumulate(long session, byte[][] checkpoints) throws ExecutionException;
-  native void mergeWith(long session, byte[] configuration, byte[][] serialized)
+  native void runAccumulate(long session, String[] checkpointPaths) throws ExecutionException;
+  native void mergeWith(long session, byte[] configuration, String[] serializedStatePaths)
       throws ExecutionException;
 
   native byte[] serialize(long session) throws ExecutionException;
-  native byte[] runReport(long session) throws ExecutionException;
+  native String runReport(long session, String outputPath) throws ExecutionException;
 }
